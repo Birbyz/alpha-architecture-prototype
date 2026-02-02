@@ -34,3 +34,47 @@ services:
       - ../:/workspace
     environment:
       PYTHONPATH: /workspace
+
+  spark-master:
+    image: apache/spark:4.0.1
+    container_name: aap-spark-master
+    env_file:
+      - ./.env
+    environment:
+      - SPARK_MODE=master
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master" ]
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ./volumes/spark:/opt/spark/work-dir
+      - ./volumes/data:/data
+
+  spark-worker:
+    image: apache/spark:4.0.1
+    container_name: aap-spark-worker
+    env_file:
+      - ./.env
+    depends_on:
+      - spark-master
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077" ]
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./volumes/spark:/opt/spark/work-dir
+      - ./volumes/data:/data
+
+  spark-client:
+    image: apache/spark:4.0.1
+    container_name: aap-spark-client
+    env_file:
+      - ./.env
+    depends_on:
+      - spark-master
+      - kafka
+    command: [ "sleep", "infinity" ]
+    volumes:
+      - ../:/workspace
+      - ./volumes/data:/data
+    environment:
+      - PYTHONPATH=/workspace

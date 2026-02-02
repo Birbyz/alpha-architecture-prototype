@@ -1,7 +1,7 @@
 # Python
 .venv/
 venv/
-__pycache__/
+common/__pycache__/
 *.pyc
 
 # Big tools / archives
@@ -10,3 +10,5 @@ tools/
 *.jar
 *.zip
 *.tar.gz
+
+docker/volumes/
