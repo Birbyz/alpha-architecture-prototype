@@ -78,3 +78,4 @@ services:
       - ./volumes/data:/data
     environment:
       - PYTHONPATH=/workspace
+      

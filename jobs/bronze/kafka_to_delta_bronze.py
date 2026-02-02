@@ -35,13 +35,13 @@ def main():
             StructField("stream", StringType(), True),
             StructField("event_ts", LongType(), True),  # binance 'E' in ms
             StructField("event_type", StringType(), True),  # binance 'e'
-            StructField("price", StringType(), True),
-            StructField("quantity", StringType(), True),
+            StructField("price", StringType(), True),   # BTC PRICE at the time of the transaction
+            StructField("quantity", StringType(), True),    # BTC QUANTITY traded
             StructField("symbol", StringType(), True),
             StructField("ingestion_time", StringType(), True),  # ISO string
             StructField("is_maker", BooleanType(), True),
             StructField(
-                "raw", MapType(StringType(), StringType()), True
+                "raw", StringType(), True
             ),  # stored as a JSON string
         ]
     )
@@ -67,11 +67,12 @@ def main():
     normalize = (
         parsed.withColumn("event_time", expr("timestamp_millis(event_ts)"))
         .withColumn("ingestion_ts", to_timestamp(col("ingestion_time")))
+        .withColumn("trade_id", expr("get_json_object(raw, '$.t')"))
         .withColumn("price_dec", col("price").cast(DecimalType(38, 18)))
         .withColumn("quantity_dec", col("quantity").cast(DecimalType(38, 18)))
         .withColumn("event_date", date_format(col("event_time"), "yyyy-MM-dd"))
         .withColumn("bronze_ingested_at", current_timestamp())
-        .withColumn("raw_json", to_json(col("raw")))
+        .withColumn("raw_json", col("raw"))
         .withColumn(
             "bronze_is_valid",
             (col("event_ts").isNotNull())
@@ -105,4 +106,4 @@ if __name__ == "__main__":
 # org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1,\
 # org.apache.spark:spark-token-provider-kafka-0-10_2.13:4.0.1 \
 #   /workspace/jobs/bronze/kafka_to_delta_bronze.py
-#'
+# '
