@@ -1,0 +1,30 @@
+# Spark runtime
+pyspark==4.0.1
+delta-spark==4.0.1
+
+# Kafka client
+kafka-python==2.0.2
+
+# Utilities
+pyyaml==6.0.2
+python-dotenv==1.0.1
+
+
+# JVM
+JDK_VERSION=17
+
+# Spark ecosystem
+SPARK_VERSION=4.0.1
+PYSPARK_VERSION=4.0.1
+DELTA_SPARK_VERSION=4.0.1
+SCALA_BINARY_VERSION=2.13
+
+# Messaging
+KAFKA_VERSION=4.0.1
+
+# Variables
+KAFKA_BROKER=localhost:9092
+KAFKA_TOPIC=crypto-trades-raw
+
+# Crypto WebSocket URL
+CRYPTO_WS_URL=wss://stream.binance.com:9443/ws/btcusdt@trade

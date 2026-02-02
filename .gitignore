@@ -1,0 +1,12 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Big tools / archives
+tools/
+*.tgz
+*.jar
+*.zip
+*.tar.gz
