@@ -8,10 +8,6 @@ from pyspark.sql.functions import (
     to_date,
     sha2,
     concat_ws,
-    coalesce,
-    lit,
-    when,
-    format_number,
 )
 
 
@@ -21,11 +17,10 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
 
     # extract trade ID from raw_json
     df = (
-        batch_df
-        .filter(col("bronze_is_valid") == True)
+        batch_df.filter(col("bronze_is_valid") == True)
+        .filter(col("trade_id").isNotNull())
         .filter(col("price_dec").isNotNull() & (col("price_dec") > 0))
         .filter(col("quantity_dec").isNotNull() & (col("quantity_dec") > 0))
-        .withColumn("trade_id", expr("get_json_object(raw_json, '$.t')"))
         .withColumn("trade_date", to_date(col("event_time")))
     )
 
@@ -33,22 +28,7 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
     # otherwise, fallback to a composite fingerprint
     df = df.withColumn(
         "trade_key",
-        when(
-            col("trade_id").isNotNull(),
-            sha2(concat_ws("||", col("symbol"), col("trade_id")), 256),
-        ).otherwise(
-            sha2(
-                concat_ws(
-                    "||",
-                    col("symbol"),
-                    col("event_ts").cast("string"),
-                    coalesce(col("trade_id"), lit("")),
-                    format_number(col("price_dec"), 18),
-                    format_number(col("quantity_dec"), 18),
-                ),
-                256,
-            ),
-        ),
+        sha2(concat_ws("||", col("symbol"), col("trade_id")), 256),
     )
 
     # keep only the necessary columns
@@ -65,19 +45,37 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
         # "source",
         # "stream",
     )
+    
+    # for testing purposes only: show string representation of price and quantity
+    silver_df_pretty = silver_df.selectExpr(
+        "trade_key",
+        "trade_id",
+        "symbol",
+        "event_ts",
+        "cast(price as string)    as price_str",
+        "cast(quantity as string) as quantity_str",
+        "ingestion_ts",
+        "trade_date"
+    )
+    # silver_df.printSchema()
+    # silver_df.show(5, truncate=False)
 
     DELTA_PATH_SILVER = get_env_var("DELTA_PATH_SILVER")
+    
     if DeltaTable.isDeltaTable(batch_df.sparkSession, DELTA_PATH_SILVER):
-        target = DeltaTable.forPath(batch_df.sparkSession, DELTA_PATH_SILVER)
         (
-            target.alias("t")
+            DeltaTable
+            .forPath(batch_df.sparkSession, DELTA_PATH_SILVER)
+            .alias("t")
             .merge(silver_df.alias("s"), "t.trade_key = s.trade_key")
             .whenNotMatchedInsertAll()
             .execute()
         )
     else:
         (
-            silver_df.write.format("delta")
+            silver_df
+            .write
+            .format("delta")
             .mode("overwrite")
             .partitionBy("symbol", "trade_date")
             .save(DELTA_PATH_SILVER)
