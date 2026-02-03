@@ -47,16 +47,16 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
     )
     
     # for testing purposes only: show string representation of price and quantity
-    silver_df_pretty = silver_df.selectExpr(
-        "trade_key",
-        "trade_id",
-        "symbol",
-        "event_ts",
-        "cast(price as string)    as price_str",
-        "cast(quantity as string) as quantity_str",
-        "ingestion_ts",
-        "trade_date"
-    )
+    # silver_df_pretty = silver_df.selectExpr(
+    #     "trade_key",
+    #     "trade_id",
+    #     "symbol",
+    #     "event_ts",
+    #     "cast(price as string)    as price_str",
+    #     "cast(quantity as string) as quantity_str",
+    #     "ingestion_ts",
+    #     "trade_date"
+    # )
     # silver_df.printSchema()
     # silver_df.show(5, truncate=False)
 
