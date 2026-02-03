@@ -1,0 +1,8 @@
+trade_key       STRING   (PK / dedup key)
+trade_id        STRING
+symbol          STRING   (BTCUSDT)
+event_ts        LONG     (ms)
+price           DECIMAL(38,18)
+quantity        DECIMAL(38,18)
+ingestion_ts    TIMESTAMP
+trade_date      DATE

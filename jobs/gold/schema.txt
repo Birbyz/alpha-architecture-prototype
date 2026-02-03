@@ -1,0 +1,19 @@
+GOLD LAYER
+
+- normalize units (BTC, USD etc.)
+- produce metrics
+
+
+symbol                          STRING
+
+aggregation_window_start        TIMESTAMP       // aggregation window = 1 minute of events
+aggregation_window_end          TIMESTAMP
+
+trade_count                     LONG            // how many individual trades occured during the aggregation window
+volume_btc                      DECIMAL(38,18)  // total amount of BTC exchanged during the aggregation window
+volume_usd                      DECIMAL(38,18)  // total amount of USD (USDT) exchanged during the aggregation window
+
+vwap_price_usd                  DECIMAL(38,18)  // Volume-Weighted Average Price = the average USD price based on the BTC exchanged quantity
+                                                //                               = volume_usd / volume_btc
+
+gold_ingested_at                TIMESTAMP
