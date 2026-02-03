@@ -50,7 +50,7 @@ def main():
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_SERVER)
         .option("subscribe", KAFKA_TOPIC)
-        .option("startingOffsets", "latest")
+        .option("startingOffsets", "earliest")
         .option("failOnDataLoss", "false")
         .load()
     )
@@ -68,8 +68,8 @@ def main():
         parsed.withColumn("event_time", expr("timestamp_millis(event_ts)"))
         .withColumn("ingestion_ts", to_timestamp(col("ingestion_time")))
         .withColumn("trade_id", expr("get_json_object(raw, '$.t')"))
-        .withColumn("price_dec", expr("CAST(price AS DECIMAL(38,18))"))
-        .withColumn("quantity_dec", expr("CAST(quantity AS DECIMAL(38,18))"))
+        .withColumn("price_dec", col("price").cast("decimal(38,18)"))
+        .withColumn("quantity_dec", col("quantity").cast("decimal(38,18)"))
         .withColumn("event_date", date_format(col("event_time"), "yyyy-MM-dd"))
         .withColumn("bronze_ingested_at", current_timestamp())
         .withColumn("raw_json", col("raw"))
@@ -95,15 +95,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# docker compose exec spark-client bash -lc '
-# mkdir -p /tmp/ivy && \
-# /opt/spark/bin/spark-submit \
-#   --master spark://spark-master:7077 \
-#   --conf spark.jars.ivy=/tmp/ivy \
-#   --packages \
-# io.delta:delta-spark_2.13:4.0.1,\
-# org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1,\
-# org.apache.spark:spark-token-provider-kafka-0-10_2.13:4.0.1 \
-#   /workspace/jobs/bronze/kafka_to_delta_bronze.py
-# '

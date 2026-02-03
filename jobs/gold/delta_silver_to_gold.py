@@ -1,8 +1,11 @@
 from common.utils import build_spark, get_env_var
 
 from pyspark.sql.functions import (expr, col, window, current_timestamp, count as _count, sum as _sum)
+from pyspark.sql.types import DecimalType
 
 def main():
+    print(f"\n=== GOLD DELTA LAYER START ===")
+    
     DELTA_PATH_SILVER = get_env_var("DELTA_PATH_SILVER")
     DELTA_PATH_GOLD = get_env_var("DELTA_PATH_GOLD")
     CHECKPOINT_PATH_GOLD = get_env_var("CHECKPOINT_PATH_GOLD")
@@ -16,13 +19,15 @@ def main():
     normalize = (
         silver_stream
         .withColumn("event_timestamp", expr("timestamp_millis(event_ts)"))
-        .withColumn("quantity_btc", col("quantity") / expr("pow(10, 8)"))
-        .withColumn("notional_usd", (col("price") * col("quantity")) / expr("pow(10, 8)"))
+        # .withColumn("price_dec", col("price").cast(DecimalType(38, 8)))
+        .withColumn("quantity_btc", col("quantity").cast("decimal(38, 18)"))
+        .withColumn("notional_usd", (col("price").cast("decimal(38, 8)") * col("quantity_btc")))
     )
     
     # gold aggregation: total notional traded per symbol per day
     gold_aggregation = (
         normalize
+        .withWatermark("event_timestamp", "2 minutes")
         .groupBy(
             col("symbol"), 
             window(col("event_timestamp"), "1 minute")
@@ -68,4 +73,4 @@ def main():
 if __name__ == "__main__":
     main()
     
-    
+
