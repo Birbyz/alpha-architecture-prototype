@@ -9,11 +9,14 @@ from pyspark.sql.functions import (
     sha2,
     concat_ws,
 )
+from pyspark.sql.types import DecimalType
 
 
 def upsert_bronze_to_silver(batch_df, batch_id: int):
-    print(f"\n=== SILVER BATCH START | batch_id={batch_id} ===")
-    print(f"rows_in_batch = {batch_df.count()}")
+    print(f"\n=== SILVER BATCH {batch_id} ===")
+    print("ROWS IN BATCH:", batch_df.count())
+    batch_df.select("price_dec", "quantity_dec", "bronze_is_valid").show(5, False)
+
 
     # extract trade ID from raw_json
     df = (
@@ -45,20 +48,6 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
         # "source",
         # "stream",
     )
-    
-    # for testing purposes only: show string representation of price and quantity
-    # silver_df_pretty = silver_df.selectExpr(
-    #     "trade_key",
-    #     "trade_id",
-    #     "symbol",
-    #     "event_ts",
-    #     "cast(price as string)    as price_str",
-    #     "cast(quantity as string) as quantity_str",
-    #     "ingestion_ts",
-    #     "trade_date"
-    # )
-    # silver_df.printSchema()
-    # silver_df.show(5, truncate=False)
 
     DELTA_PATH_SILVER = get_env_var("DELTA_PATH_SILVER")
     
@@ -112,13 +101,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-# docker compose exec spark-client bash -lc '
-# mkdir -p /tmp/ivy && \
-# /opt/spark/bin/spark-submit \
-#   --master spark://spark-master:7077 \
-#   --conf spark.jars.ivy=/tmp/ivy \
-#   --packages \
-# io.delta:delta-spark_2.13:4.0.1 \
-#   /workspace/jobs/silver/delta_bronze_to_silver.py
-# '
