@@ -1,0 +1,68 @@
+┌─────────────────────────────────────────────────────┐
+│  INFRASTRUCTURE  (Start / Stop Pipeline buttons)    │
+│  LOCAL     → docker compose up/down                 │
+│  HADOOP    → connect to cluster                     │
+│  DATABRICKS→ connect to workspace                   │
+└─────────────────────────────────────────────────────┘
+                          │
+                          ▼  (infrastructure is ready)
+┌─────────────────────────────────────────────────────┐
+│  PIPELINE STAGES  (Pipeline Status table only)      │
+│  Kafka   → start crypto-producer                    │
+│  Batch   → spark-submit CSV job  (LOCAL only)       │
+│  Bronze  → spark-submit streaming job               │
+│  Silver  → spark-submit streaming job               │
+│  Gold    → spark-submit streaming job               │
+└─────────────────────────────────────────────────────┘
+
+
+"""
+**Summary of the flow**
+```
+Start Batch (LOCAL only)
+        │
+        ▼
+spark-submit csv_to_delta_bronze.py  ──► writes to Bronze Delta directly
+        │
+        │  (job running)
+        ▼
+_is_batch_running() → activeapps contains "csv-to-delta-bronze"  →  RUNNING
+        │
+        │  (job exits)
+        ▼
+_is_batch_running() → not in activeapps anymore  →  grace period elapsed?
+        │
+        ▼
+_check_batch_completion() → completedapps: FINISHED or ERROR
+        │
+        ├── success  →  batch_exhausted = "success"  →  green banner + log
+        └── failed   →  batch_exhausted = "failed"   →  red banner + log
+"""
+
+
+
+                        ┌─────────────┐
+                        │    Kafka    │  ← crypto-producer generates events
+                        │  (Docker)   │     regardless of runtime
+                        └──────┬──────┘
+                               │ trade events
+                               ▼
+
+        ┌──────────────────────────────────────────────┐
+        │           SELECT ONE RUNTIME                 │
+        │                                              │
+        │  LOCAL       HADOOP          DATABRICKS      │
+        │  ─────       ──────          ───────────     │
+        │  Spark in    Spark on        Spark on        │
+        │  Docker      WSL YARN        Databricks      │
+        │  container   cluster         cloud           │
+        │                                              │
+        │  Delta on    Delta on        Delta on        │
+        │  local fs    HDFS            DBFS/S3         │
+        └──────────────────────────────────────────────┘
+                               │
+                               ▼ same logic, always
+                    ┌────────────────────────┐
+                    │  Bronze → Silver → Gold│
+                    │  (your .py job files)  │
+                    └────────────────────────┘

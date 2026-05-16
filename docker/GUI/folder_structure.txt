@@ -1,0 +1,51 @@
+GUI/
+├── app.py
+├── config.py                     
+├── constants.py                  
+├── state.py
+│
+├── sections/
+│   ├── __init__.py               
+│   ├── controls.py
+│   ├── environment.py
+│   ├── pipeline_flow.py          
+│   ├── pipeline_status.py
+│   ├── services_status.py        
+│   └── tabs.py
+│
+├── utils/
+│   ├── __init__.py               
+│   ├── logging_utils.py          
+│   ├── pipeline_state.py         
+│   └── data_builders.py
+│
+└── runtimes/
+    ├── __init__.py
+    ├── controller.py             
+    ├── runtime_monitor.py        
+    │
+    ├── docker/                   
+    │   ├── __init__.py
+    │   ├── actions.py            
+    │   ├── docker_controller.py  
+    │   ├── docker_status.py      
+    │   ├── pipeline_runtime.py   
+    │   └── pipeline_manager.py   
+    │
+    ├── hadoop/                   
+    │   ├── __init__.py
+    │   ├── hadoop_config.py
+    │   ├── hadoop_client.py
+    │   └── hadoop_controller.py
+    │
+    ├── databricks/               
+    │   ├── __init__.py
+    │   ├── databricks_config.py
+    │   ├── databricks_client.py
+    │   └── databricks_controller.py
+    │
+    ├── snowflake/                
+    │   └── __init__.py
+    │
+    └── ml/                       
+        └── __init__.py

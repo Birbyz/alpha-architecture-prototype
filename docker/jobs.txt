@@ -1,0 +1,56 @@
+  job-bronze:
+    build:
+      context: ./spark
+    container_name: aap-job-bronze
+    depends_on:
+      - spark-master
+      - kafka
+    env_file:
+      - ./.env
+    volumes:
+      - ../:/workspace
+      - ./volumes/data:/data
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --packages io.delta:delta-spark_2.13:4.0.1
+      /workspace/jobs/bronze/kafka_to_delta_bronze.py
+    restart: unless-stopped
+
+  job-silver:
+    build:
+      context: ./spark
+    container_name: aap-job-silver
+    depends_on:
+      - spark-master
+      - job-bronze
+    env_file:
+      - ./.env
+    volumes:
+      - ../:/workspace
+      - ./volumes/data:/data
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --packages io.delta:delta-spark_2.13:4.0.1
+      /workspace/jobs/silver/delta_bronze_to_silver.py
+    restart: unless-stopped
+
+  job-gold:
+    build:
+      context: ./spark
+    container_name: aap-job-gold
+    depends_on:
+      - spark-master
+      - job-silver
+    env_file:
+      - ./.env
+    volumes:
+      - ../:/workspace
+      - ./volumes/data:/data
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --packages io.delta:delta-spark_2.13:4.0.1
+      /workspace/jobs/gold/silver_to_gold.py
+    restart: unless-stopped

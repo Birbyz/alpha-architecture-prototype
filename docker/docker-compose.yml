@@ -1,27 +1,29 @@
+name: alpha-architecture-prototype
+
 services:
   kafka:
     image: apache/kafka:4.0.1
-    container_name: kafka
-    hostname: kafka
+    container_name: aap-kafka
     ports:
       - "9092:9092"
     environment:
-      # KRaft mode
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
 
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-
-      # Listeners
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENERS: PLAINTEXT_HOST://0.0.0.0:9092,PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:19092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
 
-      # Storage
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - ./volumes/kafka:/var/lib/kafka/data
 
   crypto-producer:
     build: ../crypto_producer
@@ -34,15 +36,18 @@ services:
       - ../:/workspace
     environment:
       PYTHONPATH: /workspace
+    restart: on-failure
 
   spark-master:
-    image: apache/spark:4.0.1
+    build:
+      context: ./spark
     container_name: aap-spark-master
     env_file:
       - ./.env
     environment:
       - SPARK_MODE=master
     command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master" ]
+    mem_limit: 1g  
     ports:
       - "7077:7077"
       - "8080:8080"
@@ -51,7 +56,12 @@ services:
       - ./volumes/data:/data
 
   spark-worker:
-    image: apache/spark:4.0.1
+    build:
+      context: ./spark
+    environment:
+      - SPARK_WORKER_MEMORY=5g          
+      - SPARK_WORKER_CORES=6 
+    mem_limit: 6g 
     container_name: aap-spark-worker
     env_file:
       - ./.env
@@ -65,7 +75,8 @@ services:
       - ./volumes/data:/data
 
   spark-client:
-    image: apache/spark:4.0.1
+    build:
+      context: ./spark
     container_name: aap-spark-client
     env_file:
       - ./.env
@@ -73,9 +84,23 @@ services:
       - spark-master
       - kafka
     command: [ "sleep", "infinity" ]
+    mem_limit: 2g 
     volumes:
       - ../:/workspace
       - ./volumes/data:/data
     environment:
       - PYTHONPATH=/workspace
-      
+
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: aap-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+
+

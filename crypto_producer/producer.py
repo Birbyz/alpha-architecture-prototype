@@ -1,9 +1,11 @@
+import os
 import json
 import time
 
+from decimal import Decimal
+from common.utils import get_env_var
 from kafka import KafkaProducer
 from websocket import WebSocketApp
-from common.utils import get_env_var
 from datetime import datetime, timezone
 
 
@@ -12,10 +14,10 @@ def utc_now_iso() -> str:
 
 
 def make_producer() -> KafkaProducer:
-    KAFKA_BOOTSTRAP = get_env_var("KAFKA_BOOTSTRAP_SERVERS")
-    
+    KAFKA_BOOTSTRAP_SERVERS = get_env_var("KAFKA_BOOTSTRAP_SERVERS")
+
     return KafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
         retries=10,
         linger_ms=5,
@@ -30,7 +32,7 @@ def main():
 
     def on_message(ws, message: str):
         print(f"[crypto-producer] received trade : {message}", flush=True)
-        
+
         message_data = json.loads(message)
         payload = {
             "source": "binance",
@@ -73,3 +75,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# docker compose up -d --build crypto-producer
+# docker compose logs -f crypto-producer
+
+# print message content from kafka
+# docker compose exec kafka bash -lc \
+# '/opt/kafka/bin/kafka-console-consumer.sh \
+#   --bootstrap-server kafka:19092 \
+#   --topic crypto-trades-raw \
+#   --from-beginning \
+#   --max-messages 1'
