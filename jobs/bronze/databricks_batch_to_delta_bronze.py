@@ -14,8 +14,8 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StructType, StructField, LongType, StringType
 
 _DEFAULTS = {
-    "DELTA_PATH_BRONZE": "dbfs:/user/hdmas/delta/bronze",
-    "BATCH_DATA_PATH":   "dbfs:/user/hdmas/batch",
+    "BATCH_DATA_PATH": "/Volumes/main/default/hdmas_data/BTCUSDT-trades-2024-01-01.csv",
+    "BRONZE_TABLE":    "main.default.hdmas_bronze",
 }
 
 
@@ -36,7 +36,7 @@ def build_spark(app_name: str) -> SparkSession:
 def main():
     spark = build_spark("batch-data-to-delta-bronze-crypto-trades")
 
-    DELTA_PATH_BRONZE = get_env_var("DELTA_PATH_BRONZE")
+    BRONZE_TABLE = get_env_var("BRONZE_TABLE")
     BATCH_DATA_PATH = get_env_var("BATCH_DATA_PATH")
 
     # Binance CSV structure
@@ -176,30 +176,12 @@ def main():
         bronze_out.write.format("delta")
         .mode("append")
         .partitionBy("symbol", "event_date")
-        .save(DELTA_PATH_BRONZE)
+        .saveAsTable(BRONZE_TABLE)
     )
 
-    print(f"Batch append complete: {BATCH_DATA_PATH} -> {DELTA_PATH_BRONZE}")
+    print(f"Batch append complete: {BATCH_DATA_PATH} -> {BRONZE_TABLE}")
     print(f"\n=== FINISHED ===\n\n\n")
 
 
 if __name__ == "__main__":
     main()
-
-
-# docker compose exec spark-client bash -lc '
-# export BATCH_DATA_PATH=/data/batch/BTCUSDT-trades-test.csv
-# export DELTA_PATH_BRONZE=/data/delta/bronze/_test_crypto_trades_raw
-
-# mkdir -p /tmp/ivy
-
-# /opt/spark/bin/spark-submit \
-#   --master spark://spark-master:7077 \
-#   --conf spark.jars.ivy=/tmp/ivy \
-#   --conf spark.driver.extraJavaOptions=-Divy.cache.dir=/tmp/ivy\ -Divy.home=/tmp/ivy \
-#   --packages io.delta:delta-spark_2.13:4.0.1 \
-#   --driver-memory 2g \
-#   --executor-memory 2g \
-#   --conf spark.executor.cores=1 \
-#   /workspace/jobs/bronze/batch_to_delta_bronze.py
-# '

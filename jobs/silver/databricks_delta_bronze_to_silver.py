@@ -11,10 +11,10 @@ from pyspark.sql.functions import (
 )
 
 _DEFAULTS = {
-    "DELTA_PATH_BRONZE":        "dbfs:/user/hdmas/delta/bronze",
-    "DELTA_PATH_SILVER":        "dbfs:/user/hdmas/delta/silver",
-    "CHECKPOINT_PATH_SILVER":   "dbfs:/user/hdmas/checkpoints/silver",
-    "DATA_BATCH_TIMER_SILVER":  "5 seconds",
+    "BRONZE_TABLE":          "main.default.hdmas_bronze",
+    "SILVER_TABLE":          "main.default.hdmas_silver",
+    "CHECKPOINT_PATH_SILVER": "/Volumes/main/default/hdmas_data/checkpoints/silver",
+    "DATA_BATCH_TIMER_SILVER": "5 seconds",
 }
 
 

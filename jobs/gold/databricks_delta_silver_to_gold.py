@@ -4,9 +4,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (expr, col, window, current_timestamp, count as _count, sum as _sum)
 
 _DEFAULTS = {
-    "DELTA_PATH_SILVER":      "dbfs:/user/hdmas/delta/silver",
-    "DELTA_PATH_GOLD":        "dbfs:/user/hdmas/delta/gold",
-    "CHECKPOINT_PATH_GOLD":   "dbfs:/user/hdmas/checkpoints/gold",
+    "SILVER_TABLE":         "main.default.hdmas_silver",
+    "GOLD_TABLE":           "main.default.hdmas_gold",
+    "CHECKPOINT_PATH_GOLD": "/Volumes/main/default/hdmas_data/checkpoints/gold",
 }
 
 

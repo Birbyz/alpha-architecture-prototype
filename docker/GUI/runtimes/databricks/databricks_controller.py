@@ -40,7 +40,13 @@ def _check_dbfs_paths(client: DatabricksClient, config: DatabricksConfig):
                 client.dbfs_mkdirs(path)
                 log(f"[HDMAS DATABRICKS] DBFS path not found, creating: {path}")
         except Exception as e:
-            log(f"[HDMAS DATABRICKS] Could not create path {path} - [ERR]: {e}")
+            if "403" in str(e):
+                log(
+                    f"[HDMAS DATABRICKS] DBFS write blocked (Unity Catalog enforcement) — "
+                    f"Delta Lake will create {path} automatically on first write."
+                )
+            else:
+                log(f"[HDMAS DATABRICKS] Could not create path {path} - [ERR]: {e}")
             
 def _upload_batch_csv(client: DatabricksClient, config: DatabricksConfig) -> bool:
     local_csv = config.batch_csv_local_path
@@ -113,11 +119,11 @@ def start_pipeline() -> None:
     log("[HDMAS DATABRICKS] Connected successfully.")
     
     client, config = _get_client()
-    if client is None:
+    if client is None or config is None:
         return
     
     st.session_state[DATABRICKS_RUN_IDS] = {}
-    set_all_stages(__IDLE__)
+    set_all_stages(__STOPPED__)
     
     _check_dbfs_paths(client, config)
     _upload_batch_csv(client, config)
@@ -136,7 +142,7 @@ def stop_pipeline() -> None:
 
 def start_stage(stage: str) -> None:
     client, config = _get_client()
-    if client is None:
+    if client is None or config is None:
         return
 
     job_id = config.job_id_for(stage)
