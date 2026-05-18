@@ -60,14 +60,8 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
         if stage in _DATABRICKS_NA_STAGES:
             return False, f"{stage} stage is not supported on Databricks runtime."
         
-        if stage == "Batch":
+        if stage == "Batch" or stage == "Silver" or stage == "Gold":
             return True, ""
-        
-        if stage == "Silver":
-            return True, ""  # Silver can run as long as Batch is running, regardless of runtime
-        
-        if stage == "Gold":
-            return is_stage_running(states, "silver")  # Gold depends on Silver regardless of runtime
         
         if stage == "ML":
             return is_stage_running(states, "gold") 
@@ -116,19 +110,8 @@ def can_stop_stage(stage: str) -> tuple[bool, str]:
         if stage in _DATABRICKS_NA_STAGES:
             return False, f"{stage} is not available in the Databricks runtime."
  
-        if stage == "Batch":
-            return True, ""
- 
-        if stage == "Silver":
-            if states.get("Gold") == __RUNNING__:
-                return False, "Stop Gold before stopping Silver."
-            return True, ""
- 
-        if stage == "Gold":
-            if states.get("ML") == __RUNNING__:
-                return False, "Stop ML before stopping Gold."
-            return True, ""
- 
+        # databricks allows stopping stages in any order since they don't have interdependencies in this runtime
+        # also the processing time is really short which may cause consecutive starting/stopping impossible
         return True, ""
 
     

@@ -11,10 +11,8 @@ from pyspark.sql.functions import (
 )
 
 _DEFAULTS = {
-    "BRONZE_TABLE":          "main.default.hdmas_bronze",
-    "SILVER_TABLE":          "main.default.hdmas_silver",
-    "CHECKPOINT_PATH_SILVER": "/Volumes/main/default/hdmas_data/checkpoints/silver",
-    "DATA_BATCH_TIMER_SILVER": "5 seconds",
+    "BRONZE_TABLE": "main.default.hdmas_bronze",
+    "SILVER_TABLE": "main.default.hdmas_silver",
 }
 
 
@@ -68,12 +66,13 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
         # "stream",
     )
 
-    DELTA_PATH_SILVER = get_env_var("DELTA_PATH_SILVER")
+
+    SILVER_TABLE = get_env_var("SILVER_TABLE")
     
-    if DeltaTable.isDeltaTable(batch_df.sparkSession, DELTA_PATH_SILVER):
+    if batch_df.sparkSession.catalog.tableExists(SILVER_TABLE):
         (
             DeltaTable
-            .forPath(batch_df.sparkSession, DELTA_PATH_SILVER)
+            .forName(batch_df.sparkSession, SILVER_TABLE)
             .alias("t")
             .merge(silver_df.alias("s"), "t.trade_key = s.trade_key")
             .whenNotMatchedInsertAll()
@@ -86,35 +85,20 @@ def upsert_bronze_to_silver(batch_df, batch_id: int):
             .format("delta")
             .mode("overwrite")
             .partitionBy("symbol", "trade_date")
-            .save(DELTA_PATH_SILVER)
+            .saveAsTable(SILVER_TABLE)
         )
 
     print(f"Batch {batch_id} finished\n\n\n")
-    time.sleep(10)
 
 
 def main():
-    DELTA_PATH_BRONZE = get_env_var("DELTA_PATH_BRONZE")
-    CHECKPOINT_PATH_SILVER = get_env_var("CHECKPOINT_PATH_SILVER")
-    DATA_BATCH_TIMER_SILVER = get_env_var("DATA_BATCH_TIMER_SILVER")
-
+    BRONZE_TABLE = get_env_var("BRONZE_TABLE")
     spark = build_spark("bronze-to-silver-crypto-trades")
 
-    bronze_stream = spark.readStream.format("delta").load(DELTA_PATH_BRONZE)
+    bronze_stream = spark.read.table(BRONZE_TABLE)
     # bronze_stream.select("raw_json").show(5, truncate=False)
 
-    query = (
-        bronze_stream.writeStream.foreachBatch(
-            lambda df, bid: upsert_bronze_to_silver(df, bid)
-        )
-        .option("checkpointLocation", CHECKPOINT_PATH_SILVER)
-        .trigger(
-            processingTime=DATA_BATCH_TIMER_SILVER
-        )  # every X seconds data is processed as a new batch
-        .start()
-    )
-
-    query.awaitTermination()
+    upsert_bronze_to_silver(bronze_stream, 0)
 
 
 if __name__ == "__main__":
