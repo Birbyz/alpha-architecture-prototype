@@ -2,6 +2,7 @@
 docker/.env
 .env
 *.env
+*.csv
 .venv/
 venv/
 common/__pycache__/
