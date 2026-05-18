@@ -1,10 +1,12 @@
+import os
 import streamlit as st  # type: ignore
 
-from utils.pipeline_state import set_stage_state
+from utils.pipeline_state import set_all_stages, set_stage_state
 from runtimes.databricks.databricks_config import DatabricksConfig
 from utils.logging_utils import log
 from runtimes.databricks.databricks_client import DatabricksClient
 from constants import (
+    __IDLE__,
     __RUNNING__,
     __STOPPED__,
     DATABRICKS,
@@ -14,10 +16,8 @@ from constants import (
 from state import set_runtime_state
 
 
-# --------------------------------------------------
-# Internal helpers
-# --------------------------------------------------
-def _get_client():
+# internal helpers
+def _get_client() -> tuple[DatabricksClient | None, DatabricksConfig | None]:
     # returns (DatabricksClient, DatabricksConfig) or (None, None)
     config = DatabricksConfig.from_env()
     if not config.is_configured:
@@ -28,10 +28,51 @@ def _get_client():
 
     return DatabricksClient(config.host, config.token), config
 
+def _check_dbfs_paths(client: DatabricksClient, config: DatabricksConfig):
+    layers = ["bronze", "silver", "gold"]
+    
+    for layer in layers:
+        path = config.dbfs_path_for(layer)
+        try:
+            if client.dbfs_exists(path):
+                log(f"[HDMAS DATABRICKS] DBFS path exists: {path}")
+            else:
+                client.dbfs_mkdirs(path)
+                log(f"[HDMAS DATABRICKS] DBFS path not found, creating: {path}")
+        except Exception as e:
+            log(f"[HDMAS DATABRICKS] Could not create path {path} - [ERR]: {e}")
+            
+def _upload_batch_csv(client: DatabricksClient, config: DatabricksConfig) -> bool:
+    local_csv = config.batch_csv_local_path
+    
+    if not local_csv:
+        log("[HDMAS DATABRICKS] No local CSV path configured for batch layer. Batch layer will be skipped.")
+        return False
+    
+    if not os.path.isfile(local_csv):
+        log(f"[HDMAS DATABRICKS] Local CSV file not found: {local_csv}. Batch layer will be skipped.")
+        return False
+    
+    dbfs_destination = config.batch_csv_dbfs_path
+    if not dbfs_destination:
+        log("[HDMAS DATABRICKS] No DBFS destination path configured for batch CSV. Batch layer will be skipped.")
+        return False
+    
+    # check if file is already uploaded to DBFS
+    if client.dbfs_exists(dbfs_destination):
+        log(f"[HDMAS DATABRICKS] Batch CSV already exists on DBFS at {dbfs_destination}. Skipping upload.")
+        return True
+    
+    log(f"[HDMAS DATABRICKS] Uploading batch CSV to DBFS: {local_csv} → {dbfs_destination}")
+    try:
+        client.dbfs_upload(local_csv, dbfs_destination, overwrite=False)
+        log(f"[HDMAS DATABRICKS] Batch CSV uploaded successfully to {dbfs_destination}")
+        return True
+    except Exception as e:
+        log(f"[HDMAS DATABRICKS] Failed to upload batch CSV: {e}")
+        return False
 
-# --------------------------------------------------
-# Public interface
-# --------------------------------------------------
+# public interface
 def get_status():
     config = DatabricksConfig.from_env()
 
@@ -46,27 +87,51 @@ def get_status():
 
 
 def on_selected():
-    status = get_status()
-    set_runtime_state(DATABRICKS, status)
-
-    if status == __RUNNING__:
-        log("[HDMAS] Databricks environment successfully selected")
-    else:
-        log(
-            "[HDMAS] Databricks runtime not reachable. Check DATABRICKS_HOST and DATABRICKS_TOKEN in .env"
-        )
+    config = DatabricksConfig.from_env()
+    
+    if not config.is_configured:
+        log("[HDMAS DATABRICKS] Not configured. Set DATABRICKS_HOST and DATABRICKS_TOKEN in .env")
+        set_runtime_state(DATABRICKS, __STOPPED__)
+        return
+    
+    log(f"[HDMAS DATABRICKS] Workspace: {config.host}")
+    log("[HDMAS DATABRICKS] Press <Start Pipeline> to connect and prepare the workspace.")
+    set_runtime_state(DATABRICKS, __IDLE__)
+    
 
 
 def start_pipeline() -> None:
-    log("[HDMAS DATABRICKS] Starting pipeline...")
-    for stage in ("Kafka", "Bronze", "Silver", "Gold"):
-        start_stage(stage)
+    log("[HDMAS DATABRICKS] Connecting to Databricks workspace...")
+    
+    status = get_status()
+    if status != __RUNNING__:
+        log("[HDMAS DATABRICKS] Connection failed. Check configuration and try again.")
+        set_runtime_state(DATABRICKS, __STOPPED__)
+        return
+    
+    set_runtime_state(DATABRICKS, __RUNNING__)
+    log("[HDMAS DATABRICKS] Connected successfully.")
+    
+    client, config = _get_client()
+    if client is None:
+        return
+    
+    st.session_state[DATABRICKS_RUN_IDS] = {}
+    set_all_stages(__IDLE__)
+    
+    _check_dbfs_paths(client, config)
+    _upload_batch_csv(client, config)
+    
+    log("[HDMAS DATABRICKS] Workspace is ready. Start each stage to run the pipeline.")
 
 
 def stop_pipeline() -> None:
     log("[HDMAS DATABRICKS] Stopping pipeline...")
-    for stage in ("Gold", "Silver", "Bronze", "Kafka"):
+    for stage in ("Gold", "Silver", "Bronze", "Batch", "Kafka"):
         stop_stage(stage)
+        
+    set_runtime_state(DATABRICKS, __STOPPED__)
+    log("[HDMAS DATABRICKS] Pipeline stopped.")
 
 
 def start_stage(stage: str) -> None:

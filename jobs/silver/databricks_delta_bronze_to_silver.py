@@ -1,16 +1,36 @@
+import os
 import time
 
+from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
-from common.utils import build_spark, get_env_var
 from pyspark.sql.functions import (
     col,
-    expr,
     to_date,
     sha2,
     concat_ws,
 )
 
+_DEFAULTS = {
+    "DELTA_PATH_BRONZE":        "dbfs:/user/hdmas/delta/bronze",
+    "DELTA_PATH_SILVER":        "dbfs:/user/hdmas/delta/silver",
+    "CHECKPOINT_PATH_SILVER":   "dbfs:/user/hdmas/checkpoints/silver",
+    "DATA_BATCH_TIMER_SILVER":  "5 seconds",
+}
 
+
+# replaces: from common.utils import build_spark, get_env_var
+def get_env_var(key: str) -> str:
+    value = os.getenv(key, _DEFAULTS.get(key, ""))
+    if not value:
+        raise RuntimeError(f"Missing required env variable: {key}")
+    return value
+ 
+ 
+def build_spark(app_name: str) -> SparkSession:
+    return SparkSession.builder.appName(app_name).getOrCreate()
+ 
+
+# JOB
 def upsert_bronze_to_silver(batch_df, batch_id: int):
     print(f"\n=== SILVER BATCH {batch_id} ===")
     print("ROWS IN BATCH:", batch_df.count())

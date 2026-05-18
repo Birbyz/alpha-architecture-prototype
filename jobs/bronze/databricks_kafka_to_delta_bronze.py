@@ -1,4 +1,6 @@
-from common.utils import get_env_var, build_spark
+import os
+
+from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -15,7 +17,27 @@ from pyspark.sql.functions import (
     current_timestamp,
 )
 
+_DEFAULTS = {
+    "DELTA_PATH_BRONZE":        "dbfs:/user/hdmas/delta/bronze",
+    "CHECKPOINT_PATH_BRONZE":   "dbfs:/user/hdmas/checkpoints/bronze",
+    "KAFKA_TOPIC":              "crypto-trades-raw",
+    # KAFKA_BOOTSTRAP_SERVERS → no default, must be provided by Confluent Cloud
+}
 
+
+# replaces: from common.utils import get_env_var, build_spark
+def get_env_var(key: str) -> str:
+    value = os.getenv(key, _DEFAULTS.get(key, ""))
+    if not value:
+        raise RuntimeError(f"Missing required env variable: {key}")
+    return value
+ 
+ 
+def build_spark(app_name: str) -> SparkSession:
+    # Delta and catalog config are managed by Databricks automatically.
+    return SparkSession.builder.appName(app_name).getOrCreate()
+
+# JOB
 def main():
     KAFKA_TOPIC = get_env_var("KAFKA_TOPIC")
     DELTA_PATH_BRONZE = get_env_var("DELTA_PATH_BRONZE")

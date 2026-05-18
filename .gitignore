@@ -12,3 +12,4 @@ tools/
 *.tar.gz
 
 docker/volumes/
+data/
