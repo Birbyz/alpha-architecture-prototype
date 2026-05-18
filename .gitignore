@@ -15,4 +15,6 @@ tools/
 *.tar.gz
 
 docker/volumes/
-data/
+data/docker/.env
+.env
+*.env
