@@ -1,5 +1,7 @@
 # Python
+docker/.env
 .env
+*.env
 .venv/
 venv/
 common/__pycache__/
