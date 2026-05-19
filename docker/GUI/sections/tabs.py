@@ -91,7 +91,7 @@ def render_gold_tab():
                     _show_snowflake_table_counts(config)
                     
         sf_counts = st.session_state.get("sf_table_counts")
-        if sf_counts:
+        if sf_counts is not None:
             st.dataframe(sf_counts, hide_index=True, use_container_width=True)
             
         st.divider()
