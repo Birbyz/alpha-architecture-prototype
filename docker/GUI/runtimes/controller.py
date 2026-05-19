@@ -2,6 +2,7 @@ import streamlit as st
 import runtimes.docker.docker_controller as docker_ctrl
 import runtimes.hadoop.hadoop_controller as hadoop_ctrl
 import runtimes.databricks.databricks_controller as databricks_ctrl
+import runtimes.snowflake.snowflake_controller as snowflake_ctrl
 
 from constants import (
     __DOCKER__,
@@ -12,6 +13,7 @@ from constants import (
     HADOOP,
     LOCAL,
     PIPELINE_ACTIONS,
+    SNOWFLAKE,
     START_PIPELINE_ACTION,
     STOP_PIPELINE_ACTION,
 )
@@ -40,8 +42,10 @@ def dispatch_action(action: str):
 
     if action == START_PIPELINE_ACTION:
         ctrl.start_pipeline()
+        
     elif action == STOP_PIPELINE_ACTION:
         ctrl.stop_pipeline()
+        
     elif action in PIPELINE_ACTIONS:
         # stage-level actions
         verb, stage = action.split("_", 1)
@@ -49,6 +53,7 @@ def dispatch_action(action: str):
             ctrl.start_stage(stage.capitalize())
         else:
             ctrl.stop_stage(stage.capitalize())
+            
     elif action in DOCKER_ACTIONS:
         # docker actions only allowed in LOCAL
         if runtime != LOCAL:
@@ -87,6 +92,8 @@ def get_hadoop_runtime_status() -> str:
 def get_databricks_runtime_status() -> str:
     return databricks_ctrl.get_status()
 
+def get_snowflake_runtime_status() -> str:
+    return snowflake_ctrl.get_status()
 
 # --------------------------------------------------
 # Internal
@@ -97,9 +104,11 @@ def _runtime_ctrl(runtime: str):
         return hadoop_ctrl
     if runtime == DATABRICKS:
         return databricks_ctrl
+    if runtime == SNOWFLAKE:
+        return snowflake_ctrl
     return docker_ctrl
 
 
 def _set_status(runtime: str, status: str):
-    key = {HADOOP: HADOOP, DATABRICKS: DATABRICKS}.get(runtime, __DOCKER__)
+    key = {HADOOP: HADOOP, DATABRICKS: DATABRICKS, SNOWFLAKE: SNOWFLAKE}.get(runtime, __DOCKER__)
     set_runtime_state(key, status)

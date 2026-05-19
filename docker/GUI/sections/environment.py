@@ -1,9 +1,9 @@
 import streamlit as st
 
-from constants import DATABRICKS, HADOOP, LOCAL
+from constants import DATABRICKS, HADOOP, LOCAL, SNOWFLAKE
 from runtimes.controller import on_runtime_selected
 
-RUNTIMES = [LOCAL, HADOOP, DATABRICKS]
+RUNTIMES = [LOCAL, HADOOP, DATABRICKS, SNOWFLAKE]
 
 
 def render_environment():

@@ -2,13 +2,16 @@ import pandas as pd
 import streamlit as st
 
 from datetime import datetime
+from runtimes.snowflake.snowflake_client import SnowflakeClient
+from runtimes.snowflake.snowflake_config import SnowflakeConfig
 from utils.logging_utils import log
-from constants import __IDLE__, __RUNNING__, HADOOP
+from constants import __IDLE__, __RUNNING__, HADOOP, SNOWFLAKE
 from utils.data_builders import (
     build_gold_latest_df,
     build_gold_sample_df,
     build_hdfs_layer_stats,
     build_metrics_series,
+    build_snowflake_gold_df,
 )
 
 
@@ -28,6 +31,7 @@ def render_gold_tab():
 
     runtime = st.session_state.get("selected_runtime", "LOCAL")
 
+    # HADOOP
     if runtime == HADOOP:
         st.caption("HADOOP runtime - data is stored on HDFS, not locally.")
 
@@ -70,7 +74,51 @@ def render_gold_tab():
         if gold_sample is not None:
             st.dataframe(gold_sample, use_container_width=True, hide_index=True)
         return
+    
+    # SNOWFLAKE
+    if runtime == SNOWFLAKE:
+        config = SnowflakeConfig.from_env()
+        st.caption(
+            f"SNOWFLAKE runtime - data is stored in **{config.database}.{config.schema}**."
+            f"Data is also accessible here - [Snowsight ↗](https://{config.account}.snowflakecomputing.com)."
+        )
+        
+        # row count summary
+        col_counts, col_fetch = st.columns([2, 1])
+        with col_counts:
+            if st.button("Refresh Table Row Counts", use_container_width=True):
+                with st.spinner("Querying Snowflake..."):
+                    _show_snowflake_table_counts(config)
+                    
+        sf_counts = st.session_state.get("sf_table_counts")
+        if sf_counts:
+            st.dataframe(sf_counts, hide_index=True, use_container_width=True)
+            
+        st.divider()
+        
+        st.markdown("#### Latest Gold Rows")
+        st.caption("Queries the Gold table directly via snowflake-connector-python.")
+        
+        fetch_cols = st.columns([1, 2])
+        with fetch_cols[0]:
+            gold_n = st.selectbox("Rows", [10, 20, 50], index=0, key="sf_gold_n")
+        with fetch_cols[1]:
+            fetch_gold_clicked = st.button("Fetch Gold Data", use_container_width=True)
+            
+        if fetch_gold_clicked:
+            with st.spinner("Querying Snowflake for latest Gold rows..."):
+                df = build_snowflake_gold_df(gold_n)
+                st.session_state["sf_gold_df"] = df
+        
+        df = st.session_state.get("sf_gold_df")
+        if df is not None:
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Press **Fetch Gold Data** to query the latest rows from the Gold table in Snowflake.")
+        return
+        
 
+    # LOCAL
     gold_controls = st.columns([1, 3])
     with gold_controls[0]:
         row_count = st.selectbox("Rows", [20, 50], index=0)
@@ -79,6 +127,26 @@ def render_gold_tab():
 
     gold_df = build_gold_latest_df(row_count)
     st.dataframe(gold_df, width="stretch", hide_index=True)
+    
+def _show_snowflake_table_counts(config: SnowflakeConfig):
+    try:
+        client = SnowflakeClient(config)
+        rows = []
+        for layer, table in [
+            ("Bronze", config.bronze_table),
+            ("Silver", config.silver_table),
+            ("Gold", config.gold_table)
+        ]:
+            count = client.get_table_row_count(table)
+            rows.append({
+                "Layer": layer,
+                "Table": f"{config.database}.{config.schema}.{table}",
+                "Rows": count if count is not None else "-"
+            })
+        st.session_state["sf_table_counts"] = pd.DataFrame(rows)
+    except Exception as e:
+        log(f"[HDMAS SNOWFLAKE] Error fetching table counts - [ERR]: {e}")
+        st.session_state["sf_table_counts"] = pd.DataFrame([{"error": str(e)}])
 
 
 def render_metrics_tab():

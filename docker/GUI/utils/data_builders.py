@@ -5,6 +5,8 @@ import pandas as pd
 
 from datetime import datetime, timedelta
 
+from runtimes.snowflake.snowflake_client import SnowflakeClient
+from runtimes.snowflake.snowflake_config import SnowflakeConfig
 from runtimes.docker.docker_status import get_service_status
 
 
@@ -13,7 +15,7 @@ def build_services_df():
 
 
 def build_hdfs_layer_stats() -> pd.DataFrame:
-    """Returns file count, total size and last-modified time for each Delta layer on HDFS."""
+    # Returns file count, total size and last-modified time for each Delta layer on HDFS
     hadoop_home = os.getenv("HADOOP_HOME", "")
     hdfs_bin = f"{hadoop_home}/bin/hdfs" if hadoop_home else "hdfs"
     namenode = os.getenv("HADOOP_NAMENODE", "localhost:9000")
@@ -174,6 +176,19 @@ spark.stop()
         if tmp_script and os.path.exists(tmp_script):
             os.unlink(tmp_script)
 
+def build_snowflake_gold_df(n: int = 20) -> pd.DataFrame:
+    try:
+        config = SnowflakeConfig.from_env()
+        if not config.is_configured:
+            return pd.DataFrame([{"info": "Snowflake not configured."}])
+        
+        client = SnowflakeClient(config)
+        rows = client.query_gold_latest_data(config.gold_table, limit=n)
+        if not rows:
+            return pd.DataFrame([{"info": f"No Gold data found in Snowflake - {config.gold_table}."}])
+        return pd.DataFrame(rows)
+    except Exception as e:
+        return pd.DataFrame([{"error": f"Error querying Snowflake: {e}"}])
 
 def build_gold_latest_df(n: int = 20):
     now = datetime.now()

@@ -30,9 +30,14 @@ RUNTIME_STATES = "runtime_states"
 
 # Databricks: {stage_name: run_id}
 DATABRICKS_RUN_IDS = "databricks_run_ids"
+_DATABRICKS_NA_STAGES = {"Kafka", "Bronze"}
 
 # Hadoop: {stage_name: yarn_application_id}
 HADOOP_RUN_IDS = "hadoop_run_ids"
+
+# Snowflake: {stage_name: process_pid}
+SNOWFLAKE_PIDS = "snowflake_pids"
+_SNOWFLAKE_NA_STAGES  = {"Kafka", "Bronze"}
 
 # --------------------------------------------------
 # UI button labels

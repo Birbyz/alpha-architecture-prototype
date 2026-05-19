@@ -8,6 +8,7 @@ from constants import (
     DATABRICKS,
     HADOOP,
     LOCAL,
+    SNOWFLAKE,
     START_PIPELINE_ACTION,
     START_PIPELINE_BUTTON,
     STOP_PIPELINE_ACTION,
@@ -73,6 +74,8 @@ def _runtime_status_badge(runtime: str) -> tuple[str, str]:
         state = get_runtime_state(DATABRICKS)
     elif runtime == HADOOP:
         state = get_runtime_state(HADOOP)
+    elif runtime == SNOWFLAKE:
+        state = get_runtime_state(SNOWFLAKE)
     else:
         state = __STOPPED__
 

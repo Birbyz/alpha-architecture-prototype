@@ -7,6 +7,8 @@ from constants import (
     LOG_LINES,
     ML_STATE,
     PIPELINE_STATE,
+    SNOWFLAKE,
+    SNOWFLAKE_PIDS,
     STAGE_STATES,
     __DOCKER__,
     RUNTIME_STATES,
@@ -15,7 +17,6 @@ from constants import (
     DATABRICKS,
     HADOOP,
 )
-from utils.logging_utils import log
 
 
 def init_session_state():
@@ -55,6 +56,10 @@ def init_session_state():
     # Hadoop: {stage_name: yarn_application_id} populated when the jobs are submitted
     if HADOOP_RUN_IDS not in st.session_state:
         st.session_state[HADOOP_RUN_IDS] = {}
+        
+    # Snowflake: {stage_name: process_pid} populated when stages are started
+    if SNOWFLAKE_PIDS not in st.session_state:
+        st.session_state[SNOWFLAKE_PIDS] = {}
 
 
 def init_runtime_state() -> None:
@@ -63,6 +68,7 @@ def init_runtime_state() -> None:
             __DOCKER__: __STOPPED__,
             DATABRICKS: __STOPPED__,
             HADOOP: __STOPPED__,
+            SNOWFLAKE: __STOPPED__
         }
 
 
@@ -77,5 +83,3 @@ def set_runtime_state(name: str, value: str) -> None:
     current = dict(st.session_state[RUNTIME_STATES])
     current[name] = value
     st.session_state[RUNTIME_STATES] = current
-
-    # log(f"[DEBUG] SET RUNTIME STATE - {name} -> {value}")

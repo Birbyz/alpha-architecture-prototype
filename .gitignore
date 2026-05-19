@@ -1,8 +1,5 @@
 # Python
 docker/.env
-.env
-*.env
-*.csv
 .venv/
 venv/
 common/__pycache__/
@@ -19,3 +16,5 @@ docker/volumes/
 data/docker/.env
 .env
 *.env
+*.txt
+*.csv

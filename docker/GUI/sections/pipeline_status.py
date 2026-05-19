@@ -8,6 +8,8 @@ from constants import (
     __IDLE__,
     __RUNNING__,
     __STOPPED__,
+    _DATABRICKS_NA_STAGES,
+    _SNOWFLAKE_NA_STAGES,
     DATABRICKS,
     HADOOP,
     LIGHT_GREEN,
@@ -15,9 +17,9 @@ from constants import (
     RED,
     ORANGE,
     PIPELINE_STAGES_ARRAY,
+    SNOWFLAKE,
 )
 
-_DATABRICKS_NA_STAGES = {"Kafka", "Bronze"}
 
 def color_status(state: str) -> str:
     color = "color: "
@@ -50,10 +52,12 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
         if docker_state != __RUNNING__:
             return False, "Local runtime not ready."
 
+    # HADOOP
     elif runtime == HADOOP:
         if get_runtime_state(HADOOP) != __RUNNING__:
             return False, "HADOOP is not connected. Press 'Start Pipeline' first."
-        
+    
+    # DATABRICKS
     elif runtime == DATABRICKS:
         if get_runtime_state(DATABRICKS) != __RUNNING__:
             return False, "DATABRICKS is not connected. Press 'Start Pipeline' first."
@@ -65,9 +69,25 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
         
         if stage == "ML":
             return is_stage_running(states, "gold") 
-        
         return False, "Unsupported stage for Databricks runtime."
+    
+    # SNOWFLAKE
+    elif runtime == SNOWFLAKE:
+        if get_runtime_state(SNOWFLAKE) != __RUNNING__:
+            return False, "SNOWFLAKE is not connected. Press 'Start Pipeline' first."
         
+        if stage in _SNOWFLAKE_NA_STAGES:
+            return False, f"{stage} stage is not supported on Snowflake runtime."
+        
+        if stage == "Batch":
+            return True, ""
+        if stage == "Silver":
+            return True, ""
+        if stage == "Gold":
+            return True, ""
+        if stage == "ML":
+            return is_stage_running(states, "gold")
+        return False, "Unsupported stage for Snowflake runtime."
 
     if stage == "Kafka":
         return True, ""
@@ -105,7 +125,7 @@ def can_stop_stage(stage: str) -> tuple[bool, str]:
     states = st.session_state.stage_states
     runtime = st.session_state.get("selected_runtime", LOCAL)
     
-    # databricks skips streaming data due to cluster payments
+    # DATABRICKS skips streaming data due to cluster payments
     if runtime == DATABRICKS:
         if stage in _DATABRICKS_NA_STAGES:
             return False, f"{stage} is not available in the Databricks runtime."
@@ -113,9 +133,15 @@ def can_stop_stage(stage: str) -> tuple[bool, str]:
         # databricks allows stopping stages in any order since they don't have interdependencies in this runtime
         # also the processing time is really short which may cause consecutive starting/stopping impossible
         return True, ""
+    
+    # SNOWFLAKE allows stopping in any order
+    if runtime == SNOWFLAKE:
+        if stage in _SNOWFLAKE_NA_STAGES:
+            return False, f"{stage} is not available in the Snowflake runtime."
+        return True, ""
 
     
-    # Stopping Kafka is only allowed if Bronze is not running,
+    # Stopping KAFKA is only allowed if Bronze is not running,
     # since Bronze depends on it as its data source.
     if stage == "Kafka":
         if states.get("Bronze") == __RUNNING__:
@@ -175,7 +201,9 @@ def render_pipeline_status():
         # In Databricks, skip N/A stages — no row rendered at all
         if runtime == DATABRICKS and stage in _DATABRICKS_NA_STAGES:
             continue
-
+        
+        if runtime == SNOWFLAKE and stage in _SNOWFLAKE_NA_STAGES:
+            continue
 
         cols = st.columns([2, 1, 1], vertical_alignment="center")
         state = st.session_state.stage_states.get(stage, __IDLE__)

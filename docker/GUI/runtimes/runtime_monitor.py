@@ -1,5 +1,7 @@
+import os
 import time
 import streamlit as st  # type: ignore
+import runtimes.snowflake.snowflake_controller as snowflake_ctrl
 
 from state import get_runtime_state
 from utils.logging_utils import log
@@ -18,8 +20,10 @@ from constants import (
     COMPOSE_FILE,
     DATABRICKS,
     DATABRICKS_RUN_IDS,
+    SNOWFLAKE,
     HADOOP,
     HADOOP_RUN_IDS,
+    SNOWFLAKE_PIDS,
 )
 
 
@@ -220,6 +224,58 @@ def _refresh_hadoop_stage_states() -> None:
 
 
 # --------------------------------------------------
+# Snowflake stage polling
+# --------------------------------------------------
+def _refresh_snowflake_stage_states():
+    pids: dict = dict(st.session_state.get(SNOWFLAKE_PIDS, {}))
+    updated_pids = dict(pids)
+    
+    for stage, pid in list(pids.items()):
+        process = snowflake_ctrl._processes.get(stage)
+        
+        if process is not None:
+            item = process.poll()
+            if item is not None:
+                log(f"[HDMAS SNOWFLAKE MONITOR] {stage} process (pid={pid}) has terminated.")
+                set_stage_state(stage, __STOPPED__)
+                updated_pids.pop(stage, None)
+            
+            # CASE: process is finished - tail log file for GUI output
+            log_path = snowflake_ctrl._log_files.get(stage, "")
+            if log_path and os.path.isfile(log_path):
+                try:
+                    with open(log_path) as log_file:
+                        lines = log_file.readlines()
+                    for line in lines:
+                        line = line.strip()
+                        if line:
+                            log(f"[HDMAS SNOWFLAKE] {stage} LOG - {line}")
+                except Exception as e:
+                    log(f"[HDMAS SNOWFLAKE] Failed to read log file for {stage} (pid={pid}) - ERR: {e}")
+                    pass
+                
+            if item == 0:
+                log(f"[HDMAS SNOWFLAKE] {stage} (pid={pid}) completed successfully.")
+            else:
+                log(f"[HDMAS SNOWFLAKE] {stage} exited with code {item}. (pid={pid}). Check /tmp/snowflake_{stage.lower()}_*.log")
+        
+            set_stage_state(stage, __STOPPED__)
+            updated_pids.pop(stage, None)
+            snowflake_ctrl._processes.pop(stage, None)
+            snowflake_ctrl._log_files.pop(stage, None)
+        else:
+            # check PID liveness directly
+            try:
+                os.kill(pid, 0)
+                set_stage_state(stage, __RUNNING__)
+            except (ProcessLookupError, PermissionError):
+                log(f"[HDMAS SNOWFLAKE] {stage} (pid={pid}) is no longer running.")
+                set_stage_state(stage, __STOPPED__)
+                updated_pids.pop(stage, None)
+    st.session_state[SNOWFLAKE_PIDS] = updated_pids
+
+
+# --------------------------------------------------
 # Main entry point — called on every Streamlit rerun
 # --------------------------------------------------
 def refresh_pipeline_runtime_status() -> None:
@@ -244,6 +300,15 @@ def refresh_pipeline_runtime_status() -> None:
             return
 
         _refresh_hadoop_stage_states()
+        return
+    
+    if runtime == SNOWFLAKE:
+        hadoop_state = get_runtime_state(SNOWFLAKE)
+        if hadoop_state != __RUNNING__:
+            for stage in ("Batch", "Silver", "Gold"):
+                set_stage_state(stage, __STOPPED__)
+            return
+        _refresh_snowflake_stage_states()
         return
 
     # LOCAL / Docker path (original logic)
