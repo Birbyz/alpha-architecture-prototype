@@ -49,9 +49,9 @@ class SnowflakeConfig:
             silver_table = os.getenv("SNOWFLAKE_SILVER_TABLE", "SNOWFLAKE_SILVER_TABLE").strip(),
             gold_table = os.getenv("SNOWFLAKE_GOLD_TABLE", "SNOWFLAKE_GOLD_TABLE").strip(),
             batch_csv_local_path = os.getenv("SNOWFLAKE_BATCH_CSV_PATH", "").strip(),
-            batch_job_script_path = _script("SNOWFLAKE_BATCH_JOB_SCRIPT_PATH", "batch", "batch_job.py"),
-            silver_job_script_path = _script("SNOWFLAKE_SILVER_JOB_SCRIPT_PATH", "silver", "silver_job.py"),
-            gold_job_script_path = _script("SNOWFLAKE_GOLD_JOB_SCRIPT_PATH", "gold", "gold_job.py")
+            batch_job_script_path = _script("SNOWFLAKE_BATCH_JOB_SCRIPT_PATH", "bronze", "snowflake_batch_to_delta_bronze.py"),
+            silver_job_script_path = _script("SNOWFLAKE_SILVER_JOB_SCRIPT_PATH", "silver", "snowflake_delta_bronze_to_silver.py"),
+            gold_job_script_path = _script("SNOWFLAKE_GOLD_JOB_SCRIPT_PATH", "gold", "snowflake_delta_silver_to_gold.py")
         )
         
     @property

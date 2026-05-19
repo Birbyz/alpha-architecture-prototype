@@ -57,15 +57,31 @@ def main():
     print(f"[HDMAS SNOWFLAKE BATCH] Table ready: {bronze_table}")
     
     # load batch CSV data
+    staging_table = f"{bronze_table}_STAGE_RAW"
+    cursor.execute(f"""
+        CREATE OR REPLACE TEMPORARY TABLE {staging_table} (
+            RAW_ID              VARCHAR,
+            RAW_PRICE           VARCHAR,
+            RAW_QTY             VARCHAR,
+            RAW_QUOTE_QTY       VARCHAR,
+            RAW_TIME            VARCHAR,
+            RAW_IS_BUYER_MAKER  VARCHAR,
+            RAW_IS_BEST_MATCH   VARCHAR
+        )
+    """)
+    print(f"[HDMAS SNOWFLAKE BATCH] Staging table ready: {staging_table}")
+
+    # file format for batch CSV
     cursor.execute("""
         CREATE OR REPLACE FILE FORMAT hdmas_binance_csv_fmt
-            TYPE                       = 'CSV'
-            FIELD_DELIMITER            = ','
-            SKIP_HEADER                = 0
-            NULL_IF                    = ('NULL', 'null', '')
-            EMPTY_FIELD_AS_NULL        = TRUE
+            TYPE                         = 'CSV'
+            FIELD_DELIMITER              = ','
+            SKIP_HEADER                  = 0
+            NULL_IF                      = ('NULL', 'null', '')
+            EMPTY_FIELD_AS_NULL          = TRUE
             FIELD_OPTIONALLY_ENCLOSED_BY = '"'
     """)
+
     
     cursor.execute("CREATE STAGE IF NOT EXISTS hdmas_batch_stage")
     
@@ -78,76 +94,87 @@ def main():
     for row in cursor.fetchall():
         print(f"[HDMAS SNOWFLAKE BATCH] PUT result: {row}")
         
+    # copy into staging table
     cursor.execute(f"""
-        COPY INTO {bronze_table} (
-            TRADE_ID, SYMBOL, PRICE, QUANTITY, EVENT_TS, IS_MAKER,
-            EVENT_TIME, TRADE_DATE, SOURCE, INGESTION_TS,
-            BRONZE_IS_VALID, BRONZE_INGESTED_AT
+        COPY INTO {staging_table} (
+            RAW_ID, RAW_PRICE, RAW_QTY, RAW_QUOTE_QTY,
+            RAW_TIME, RAW_IS_BUYER_MAKER, RAW_IS_BEST_MATCH
         )
         FROM (
-            SELECT
-                $1::VARCHAR,            -- TRADE_ID
- 
-                'BTCUSDT',              -- SYMBOL
- 
-                $2::NUMBER(38,18),      -- PRICE
- 
-                $3::NUMBER(38,18),      -- QUANTITY (qty column)
- 
-                -- Time normalisation: microseconds → milliseconds when value >= 10^13
-                CASE
-                    WHEN TRY_CAST($5 AS NUMBER) >= 10000000000000
-                    THEN FLOOR(TRY_CAST($5 AS NUMBER) / 1000)
-                    ELSE TRY_CAST($5 AS NUMBER)
-                END::NUMBER,            -- EVENT_TS (ms)
- 
-                LOWER($6::VARCHAR) = 'true',   -- IS_MAKER
- 
-                -- EVENT_TIME — ms epoch → timestamp
-                TO_TIMESTAMP_NTZ(
-                    CASE
-                        WHEN TRY_CAST($5 AS NUMBER) >= 10000000000000
-                        THEN FLOOR(TRY_CAST($5 AS NUMBER) / 1000)
-                        ELSE TRY_CAST($5 AS NUMBER)
-                    END, 3
-                ),
- 
-                -- TRADE_DATE
-                TO_DATE(TO_TIMESTAMP_NTZ(
-                    CASE
-                        WHEN TRY_CAST($5 AS NUMBER) >= 10000000000000
-                        THEN FLOOR(TRY_CAST($5 AS NUMBER) / 1000)
-                        ELSE TRY_CAST($5 AS NUMBER)
-                    END, 3
-                )),
- 
-                'binance_vision_csv',   -- SOURCE
-                CURRENT_TIMESTAMP(),    -- INGESTION_TS
- 
-                -- BRONZE_IS_VALID
-                (
-                    $2 IS NOT NULL AND $3 IS NOT NULL
-                    AND TRY_CAST($2 AS FLOAT) > 0
-                    AND TRY_CAST($3 AS FLOAT) > 0
-                ),
- 
-                CURRENT_TIMESTAMP()     -- BRONZE_INGESTED_AT
- 
+            SELECT $1, $2, $3, $4, $5, $6, $7
             FROM @hdmas_batch_stage
         )
         FILE_FORMAT = (FORMAT_NAME = 'hdmas_binance_csv_fmt')
         ON_ERROR    = 'CONTINUE'
     """)
-    
+
     copy_result = cursor.fetchall()
-    # copy into result columns
     loaded = sum(
         r[3] for r in copy_result
         if len(r) > 3 and isinstance(r[3], (int, float)) and r[3] is not None
     )
-    print(f"[HDMAS SNOWFLAKE BATCH] COPY INTO done — rows loaded: {loaded}")
-    for row in copy_result:
-        print(f"[HDMAS SNOWFLAKE BATCH] COPY INTO result: {row}")
+    print(f"[HDMAS SNOWFLAKE BATCH] COPY INTO staging done — rows loaded: {loaded}")
+    
+    # insert into bronze with transformations
+    cursor.execute(f"""
+        INSERT INTO {bronze_table} (
+            TRADE_ID, SYMBOL, PRICE, QUANTITY, EVENT_TS, IS_MAKER,
+            EVENT_TIME, TRADE_DATE, SOURCE, INGESTION_TS,
+            BRONZE_IS_VALID, BRONZE_INGESTED_AT
+        )
+        SELECT
+            RAW_ID::VARCHAR,
+ 
+            'BTCUSDT',
+ 
+            TRY_CAST(RAW_PRICE AS NUMBER(38,18)),
+ 
+            TRY_CAST(RAW_QTY AS NUMBER(38,18)),
+ 
+            -- Time normalisation: microseconds → milliseconds when value >= 10^13
+            CASE
+                WHEN TRY_CAST(RAW_TIME AS BIGINT) >= 10000000000000
+                THEN FLOOR(TRY_CAST(RAW_TIME AS BIGINT) / 1000)
+                ELSE TRY_CAST(RAW_TIME AS BIGINT)
+            END,
+ 
+            LOWER(RAW_IS_BUYER_MAKER) = 'true',
+ 
+            -- EVENT_TIME — ms epoch → timestamp
+            TO_TIMESTAMP_NTZ(
+                CASE
+                    WHEN TRY_CAST(RAW_TIME AS BIGINT) >= 10000000000000
+                    THEN FLOOR(TRY_CAST(RAW_TIME AS BIGINT) / 1000)
+                    ELSE TRY_CAST(RAW_TIME AS BIGINT)
+                END, 3
+            ),
+ 
+            TO_DATE(TO_TIMESTAMP_NTZ(
+                CASE
+                    WHEN TRY_CAST(RAW_TIME AS BIGINT) >= 10000000000000
+                    THEN FLOOR(TRY_CAST(RAW_TIME AS BIGINT) / 1000)
+                    ELSE TRY_CAST(RAW_TIME AS BIGINT)
+                END, 3
+            )),
+ 
+            'binance_vision_csv',
+ 
+            CURRENT_TIMESTAMP(),
+ 
+            (
+                RAW_PRICE IS NOT NULL AND RAW_QTY IS NOT NULL
+                AND TRY_CAST(RAW_PRICE AS FLOAT) > 0
+                AND TRY_CAST(RAW_QTY   AS FLOAT) > 0
+            ),
+ 
+            CURRENT_TIMESTAMP()
+ 
+        FROM {staging_table}
+    """)
+    
+    cursor.execute(f"SELECT COUNT(*) FROM {bronze_table}")
+    total = cursor.fetchone()
+    print(f"[HDMAS SNOWFLAKE BATCH] Insert into bronze done — total rows in {bronze_table}: {total[0] if total else 'unknown'}")
         
     cursor.close()
     connection.close()

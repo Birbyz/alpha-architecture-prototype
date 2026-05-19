@@ -15,6 +15,7 @@ from runtimes.hadoop.hadoop_config import HadoopConfig
 
 from constants import (
     __DOCKER__,
+    __IDLE__,
     __RUNNING__,
     __STOPPED__,
     COMPOSE_FILE,
@@ -303,10 +304,10 @@ def refresh_pipeline_runtime_status() -> None:
         return
     
     if runtime == SNOWFLAKE:
-        hadoop_state = get_runtime_state(SNOWFLAKE)
-        if hadoop_state != __RUNNING__:
+        snowflake_state = get_runtime_state(SNOWFLAKE)
+        if snowflake_state != __RUNNING__:
             for stage in ("Batch", "Silver", "Gold"):
-                set_stage_state(stage, __STOPPED__)
+                set_stage_state(stage, __IDLE__)
             return
         _refresh_snowflake_stage_states()
         return

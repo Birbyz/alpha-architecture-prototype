@@ -7,7 +7,7 @@ import streamlit as st
 from pathlib import Path
 from typing import Optional
 
-from constants import __RUNNING__, __STOPPED__, SNOWFLAKE, SNOWFLAKE_PIDS
+from constants import __IDLE__, __RUNNING__, __STOPPED__, SNOWFLAKE, SNOWFLAKE_PIDS
 from utils.pipeline_state import set_all_stages, set_stage_state
 from runtimes.snowflake.snowflake_client import SnowflakeClient
 from runtimes.snowflake.snowflake_config import SnowflakeConfig
@@ -54,6 +54,8 @@ def get_status() -> str:
     
 def on_selected():
     config = SnowflakeConfig.from_env()
+    set_all_stages(__IDLE__)
+    
     if not config.is_configured:
         log(
             "[HDMAS SNOWFLAKE] Snowflake is not configured. Please set the required environment variables: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD."
