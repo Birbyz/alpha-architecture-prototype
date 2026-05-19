@@ -235,11 +235,11 @@ def _refresh_snowflake_stage_states():
         process = snowflake_ctrl._processes.get(stage)
         
         if process is not None:
-            item = process.poll()
-            if item is not None:
-                log(f"[HDMAS SNOWFLAKE MONITOR] {stage} process (pid={pid}) has terminated.")
-                set_stage_state(stage, __STOPPED__)
-                updated_pids.pop(stage, None)
+            exit_code = process.poll()
+        
+            if exit_code is None:
+                set_stage_state(stage, __RUNNING__)
+                continue
             
             # CASE: process is finished - tail log file for GUI output
             log_path = snowflake_ctrl._log_files.get(stage, "")
@@ -255,10 +255,10 @@ def _refresh_snowflake_stage_states():
                     log(f"[HDMAS SNOWFLAKE] Failed to read log file for {stage} (pid={pid}) - ERR: {e}")
                     pass
                 
-            if item == 0:
+            if exit_code == 0:
                 log(f"[HDMAS SNOWFLAKE] {stage} (pid={pid}) completed successfully.")
             else:
-                log(f"[HDMAS SNOWFLAKE] {stage} exited with code {item}. (pid={pid}). Check /tmp/snowflake_{stage.lower()}_*.log")
+                log(f"[HDMAS SNOWFLAKE] {stage} exited with code {exit_code}. (pid={pid}). Check /tmp/snowflake_{stage.lower()}_*.log")
         
             set_stage_state(stage, __STOPPED__)
             updated_pids.pop(stage, None)
