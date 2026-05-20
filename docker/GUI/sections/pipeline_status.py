@@ -64,29 +64,17 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
         if stage in _DATABRICKS_NA_STAGES:
             return False, f"{stage} stage is not supported on Databricks runtime."
         
-        if stage == "Batch" or stage == "Silver" or stage == "Gold":
+        if stage in ("Batch", "Silver", "Gold"):
             return True, ""
-        
-        if stage == "ML":
-            return is_stage_running(states, "gold") 
-        return False, "Unsupported stage for Databricks runtime."
     
     # SNOWFLAKE
     elif runtime == SNOWFLAKE:
         if get_runtime_state(SNOWFLAKE) != __RUNNING__:
-            return False, "SNOWFLAKE is not connected. Press 'Start Pipeline' first."
-        
+            return False, "SNOWFLAKE is not connected. Press 'Start Pipeline' first." 
         if stage in _SNOWFLAKE_NA_STAGES:
-            return False, f"{stage} stage is not supported on Snowflake runtime."
-        
-        if stage == "Batch":
+            return False, f"{stage} stage is not supported on Snowflake runtime."     
+        if stage in ("Batch", "Silver", "Gold"):
             return True, ""
-        if stage == "Silver":
-            return True, ""
-        if stage == "Gold":
-            return True, ""
-        if stage == "ML":
-            return is_stage_running(states, "gold")
         return False, "Unsupported stage for Snowflake runtime."
 
     if stage == "Kafka":
@@ -103,10 +91,8 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
     if stage == "Bronze":
         kafka_running = states.get("Kafka") == __RUNNING__
         batch_running = states.get("Batch") == __RUNNING__
-
         if not kafka_running and not batch_running:
             return False, "Kafka or Batch layers must be running."
-
         return True, ""
 
     if stage == "Silver":
@@ -114,9 +100,6 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
 
     if stage == "Gold":
         return is_stage_running(states, "silver")
-
-    if stage == "ML":
-        return is_stage_running(states, "gold")
 
     return False, "Unsupported stage."
 
@@ -164,8 +147,6 @@ def can_stop_stage(stage: str) -> tuple[bool, str]:
         return True, ""
 
     if stage == "Gold":
-        if states.get("ML") == __RUNNING__:
-            return False, "Stop ML before stopping Gold."
         return True, ""
 
     return True, ""

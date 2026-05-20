@@ -89,3 +89,32 @@ class SnowflakeClient:
             return rows
         except Exception as e:
             return [{"error": str(e)}]
+        
+        
+    def query_gold_data_for_ml(self, table_name: str) -> List[Dict[str, Any]]:
+        # fetch the full gold table ordered chronologically for ML training
+        try:
+            connection = self._connect()
+            cursor = connection.cursor()
+            cursor.execute(
+                f"""
+                SELECT
+                    SYMBOL,
+                    AGGREGATION_WINDOW_START,
+                    TRADE_COUNT,
+                    VOLUME_BTC,
+                    VOLUME_USD,
+                    VWAP_PRICE_USD
+                FROM {table_name}
+                WHERE SYMBOL IS NOT NULL
+                  AND VWAP_PRICE_USD IS NOT NULL
+                ORDER BY AGGREGATION_WINDOW_START ASC
+                """
+            )
+
+            columns = [col[0] for col in cursor.description]
+            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            connection.close()
+            return rows
+        except Exception:
+            return[]
