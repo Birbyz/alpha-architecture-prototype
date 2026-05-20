@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Callable
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
@@ -18,8 +18,11 @@ from runtimes.snowflake.snowflake_config import SnowflakeConfig
 
 # paths
 _HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(_HERE, 'model.joblib')
-META_PATH = os.path.join(_HERE, 'model_meta.json')
+MODELS_DIR = os.path.abspath(
+    os.path.join(_HERE, '..', 'trained_models')
+)
+MODEL_PATH = os.path.join(MODELS_DIR, 'model.joblib')
+META_PATH = os.path.join(MODELS_DIR, 'model_meta.json')
 
 # config
 HORIZONS = [5, 15, 30]          # minutes ahead to predict
@@ -29,6 +32,7 @@ ROLLING_WINDOWS = [5, 15, 30]   # rolling mean windows in minutes
 N_ESTIMATORS = 150              # Random Forest trees
 MAX_DEPTH = 12                  # Random Forest max depth
 RANDOM_STATE = 42               # for reproducibility
+TRAIN_TOTAL_STEPS = len(HORIZONS) + 2
 
 # data loading
 def _load_snowflake_environment() -> pd.DataFrame:
@@ -130,8 +134,15 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # train
-def train_model(source: str = SNOWFLAKE.lower()) -> dict:
+def train_model(source: str = SNOWFLAKE.lower(), on_progress: Optional[Callable[[int, int, str], None]] = None) -> dict:
+    def _progress(step: int, msg: str):
+        if on_progress:
+            on_progress(step, TRAIN_TOTAL_STEPS, msg)
+            
+    _progress(1, f"Loading gold data from {source.capitalize()}")
     df_raw = load_gold_data(source)
+    
+    _progress(1, "Engineering features...")
     df = engineer_features(df_raw)
     
     if len(df) < 60:
@@ -145,7 +156,9 @@ def train_model(source: str = SNOWFLAKE.lower()) -> dict:
     models = {}
     metrics = {}
     
-    for h in HORIZONS:
+    # steps 2 - 4: one model per horizon
+    for step, h in enumerate(HORIZONS, start=2):
+        _progress(step, f"Training {h}-min(s) horizon model ({step-1}/{len(HORIZONS)})...")
         y_train = df[f"target_vwap_{h}"].iloc[:split_idx]
         y_test = df[f"target_vwap_{h}"].iloc[split_idx:]
         
@@ -167,6 +180,8 @@ def train_model(source: str = SNOWFLAKE.lower()) -> dict:
 
         }
         
+    # step 5 - persist
+    _progress(TRAIN_TOTAL_STEPS, "Saving model and metadata...")
     primary = models[HORIZONS[0]]
     feature_importance = {
         col: round(float(imp), 6)

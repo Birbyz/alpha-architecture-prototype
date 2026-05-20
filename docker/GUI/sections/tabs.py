@@ -252,19 +252,34 @@ def render_ml_tab():
         st.session_state["ml_state"] = __RUNNING__
         st.session_state["ml_error"] = None
         log(f"[HDMAS ML] Training started (source={source})...")
-        with st.spinner("Training model — this may take a moment..."):
-            try:
-                meta = ml_predictor.train_model(source=source)
-                st.session_state["ml_train_result"] = meta
-                st.session_state["ml_state"] = __IDLE__
-                log(
-                    f"[HDMAS ML] Training complete — {meta['n_rows_engineered']} rows, "
-                    f"version {meta['model_version']}."
-                )
-            except Exception as e:
-                st.session_state["ml_error"] = str(e)
-                st.session_state["ml_state"] = __IDLE__
-                log(f"[HDMAS ML] Training failed: {e}")
+        
+        progress_bar = st.progress(0, text="Starting...")
+        status_text = st.empty()
+        
+        def on_progress(step: int, total: int, message: str):
+            pct = int((step / total) * 100)
+            progress_bar.progress(pct, text=message)
+            status_text.caption(f"Step {step}/{total} — {message}")
+            log(f"[HDMAS ML] {message}")
+            
+        try:
+            meta = ml_predictor.train_model(source=source, on_progress=on_progress)
+            progress_bar.progress(100, text="Training complete!")
+            status_text.empty()
+            
+            st.session_state["ml_train_result"] = meta
+            st.session_state["ml_state"] = __IDLE__
+            log(
+                f"[HDMAS ML] Training complete — {meta['n_rows_engineered']} rows, "
+                f"version {meta['model_version']}."
+            )
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            
+            st.session_state["ml_error"] = str(e)
+            st.session_state["ml_state"] = __IDLE__
+            log(f"[HDMAS ML] Training failed: {e}")
 
     
     if reset_clicked:
