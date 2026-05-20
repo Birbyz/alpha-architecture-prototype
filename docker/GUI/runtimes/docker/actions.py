@@ -105,8 +105,8 @@ BATCH_STOP_COMMAND = (
 )
 
 BRONZE_START_COMMAND = """
-docker compose exec spark-client bash -lc '
-nohup /opt/spark/bin/spark-submit \
+docker compose exec -T spark-client bash -lc '
+/opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   --name kafka-to-delta-bronze-crypto-trades \
   --conf spark.jars.ivy=/tmp/.ivy2 \

@@ -383,24 +383,25 @@ def render_ml_tab():
         st.metric("Source", pred_result.get("source", "-").capitalize())
  
     st.markdown("#### Per-horizon forecasts")
-    pred_cols = st.columns(3)
-    horizon_map = [("5", "5 min"), ("15", "15 min"), ("30", "30 min")]
+    result_horizons = [str(h) for h in pred_result.get("horizons", [5, 15, 30])]
+    pred_cols = st.columns(len(result_horizons))
+
  
-    for col, (h_key, h_label) in zip(pred_cols, horizon_map):
-        hp = pred_result.get("predictions", {}).get(h_key, {})
-        direction = hp.get("direction", "?")
-        confidence = hp.get("confidence", 0)
-        predicted = hp.get("predicted_vwap", 0)
-        std = hp.get("std", 0)
-        lower = hp.get("lower", 0)
-        upper = hp.get("upper", 0)
+    for col, h_key in zip(pred_cols, result_horizons):
+        hp         = pred_result.get("predictions", {}).get(h_key, {})
+        direction  = hp.get("direction", "?")
+        confidence = hp.get("confidence", 0.0)
+        predicted  = hp.get("predicted_vwap", 0.0)
+        std        = hp.get("std", 0.0)
+        lower      = hp.get("lower", 0.0)
+        upper      = hp.get("upper", 0.0)
  
-        arrow = "↑" if direction == "UP" else "↓"
+        arrow     = "↑" if direction == "UP" else "↓"
         delta_usd = predicted - pred_result["current_vwap"]
         delta_str = f"{'+' if delta_usd >= 0 else ''}{delta_usd:,.2f}"
  
         with col:
-            st.markdown(f"**{h_label}**")
+            st.markdown(f"**{h_key} min**")
             st.metric(
                 label="VWAP forecast",
                 value=f"${predicted:,.2f}",
@@ -410,7 +411,8 @@ def render_ml_tab():
                 f"{arrow} **{direction}** &nbsp; `{confidence:.1f}% confidence`",
                 unsafe_allow_html=True,
             )
-            st.caption(f"±${std:,.2f} std  |  range ${lower:,.2f} - ${upper:,.2f}")
+            st.caption(f"±${std:,.2f} std  |  range ${lower:,.2f} – ${upper:,.2f}")
+
 
 
 def render_tabs():

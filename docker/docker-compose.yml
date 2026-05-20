@@ -91,6 +91,18 @@ services:
     environment:
       - PYTHONPATH=/workspace
 
+  data-init:
+    image: busybox
+    container_name: aap-data-init
+    command: >
+      sh -c "mkdir -p
+        /data/bronze/delta /data/bronze/checkpoints
+        /data/silver/delta /data/silver/checkpoints
+        /data/gold/delta   /data/gold/checkpoints
+        /data/batch &&
+        chmod -R 777 /data"
+    volumes:
+      - ./volumes/data:/data
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
