@@ -21,3 +21,4 @@ data/docker/.env
 *.sh
 *.json
 *.joblib
+*.Identifier
