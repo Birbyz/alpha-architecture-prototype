@@ -92,8 +92,8 @@ def get_hadoop_runtime_status() -> str:
 def get_databricks_runtime_status() -> str:
     return databricks_ctrl.get_status()
 
-def get_snowflake_runtime_status() -> str:
-    return snowflake_ctrl.get_status()
+# def get_snowflake_runtime_status() -> str:
+#     return snowflake_ctrl.get_status()
 
 # --------------------------------------------------
 # Internal

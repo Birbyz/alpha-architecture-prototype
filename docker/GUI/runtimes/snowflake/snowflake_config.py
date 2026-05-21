@@ -21,6 +21,7 @@ class SnowflakeConfig:
     batch_csv_local_path: str
     
     # path to standalone job scripts
+    kafka_job_script_path: str
     batch_job_script_path: str
     silver_job_script_path: str
     gold_job_script_path: str
@@ -49,6 +50,7 @@ class SnowflakeConfig:
             silver_table = os.getenv("SNOWFLAKE_SILVER_TABLE", "SNOWFLAKE_SILVER_TABLE").strip(),
             gold_table = os.getenv("SNOWFLAKE_GOLD_TABLE", "SNOWFLAKE_GOLD_TABLE").strip(),
             batch_csv_local_path = os.getenv("SNOWFLAKE_BATCH_CSV_PATH", "").strip(),
+            kafka_job_script_path=_script("SNOWFLAKE_KAFKA_JOB_SCRIPT_PATH", "bronze", "snowflake_kafka_to_delta_bronze.py"),
             batch_job_script_path = _script("SNOWFLAKE_BATCH_JOB_SCRIPT_PATH", "bronze", "snowflake_batch_to_delta_bronze.py"),
             silver_job_script_path = _script("SNOWFLAKE_SILVER_JOB_SCRIPT_PATH", "silver", "snowflake_delta_bronze_to_silver.py"),
             gold_job_script_path = _script("SNOWFLAKE_GOLD_JOB_SCRIPT_PATH", "gold", "snowflake_delta_silver_to_gold.py")
@@ -71,6 +73,7 @@ class SnowflakeConfig:
         
     def script_for(self, stage: str) -> str:
         return {
+            "Kafka": self.kafka_job_script_path,
             "Batch": self.batch_job_script_path,
             "Silver": self.silver_job_script_path,
             "Gold": self.gold_job_script_path

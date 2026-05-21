@@ -9,6 +9,7 @@ __STOPPED__ = "STOPPED"
 __ML__ = "ML"
 __ERROR__ = "Error. Something went wrong."
 
+
 # --------------------------------------------------
 # Runtime names
 # --------------------------------------------------
@@ -28,6 +29,13 @@ ML_STATE = "ml_state"
 LAST_PREDICTION = "last_prediction"
 RUNTIME_STATES = "runtime_states"
 
+# ML session state keys (standalone — not part of pipeline stage_states)
+ML_STATE = "ml_state"
+ML_TRAIN_RESULT = "ml_train_result"
+ML_PREDICT_RESULT = "ml_predict_result"
+ML_ERROR = "ml_error"
+
+
 # Databricks: {stage_name: run_id}
 DATABRICKS_RUN_IDS = "databricks_run_ids"
 _DATABRICKS_NA_STAGES = {"Kafka", "Bronze"}
@@ -37,7 +45,7 @@ HADOOP_RUN_IDS = "hadoop_run_ids"
 
 # Snowflake: {stage_name: process_pid}
 SNOWFLAKE_PIDS = "snowflake_pids"
-_SNOWFLAKE_NA_STAGES  = {"Kafka", "Bronze"}
+_SNOWFLAKE_NA_STAGES  = {"Bronze"}
 
 # --------------------------------------------------
 # UI button labels
@@ -69,6 +77,9 @@ PIPELINE_STAGE_NAMES = {
     "silver": "Silver",
     "gold": "Gold",
 }
+
+KAFKA_MAX_RETRIES = 24   # 24 x 5s = 2 minutes max wait
+KAFKA_RETRY_DELAY = 5 
 
 # --------------------------------------------------
 # Pipeline action name constants  (shared across all runtimes)
@@ -123,7 +134,7 @@ SPARK_WORKER = "spark-worker"
 # --------------------------------------------------
 HADOOP_ACTIVE_STATES = {"NEW", "NEW_SAVING", "SUBMITTED", "ACCEPTED", "RUNNING"}
 HADOOP_TERMINAL_STATES = {"FINISHED", "FAILED", "KILLED"}
-HADOOP_SUCCESS_FINAL = "SUCCEEDED"  # finalStatus when state == FINISHED
+HADOOP_SUCCESS_FINAL = "SUCCEEDED"
 
 # --------------------------------------------------
 # Spark packages (must match Docker image versions)

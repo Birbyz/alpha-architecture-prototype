@@ -14,7 +14,7 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StructType, StructField, LongType, StringType
 
 _DEFAULTS = {
-    "BATCH_DATA_PATH": "/Volumes/main/default/hdmas_data/BTCUSDT-trades-2024-01-01.csv",
+    "BATCH_DATA_PATH": "/Volumes/main/default/hdmas_data/BTCUSDT-trades-2026-04.csv",
     "BRONZE_TABLE":    "main.default.hdmas_bronze",
 }
 

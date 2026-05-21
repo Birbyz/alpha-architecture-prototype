@@ -7,12 +7,12 @@ import streamlit as st
 from pathlib import Path
 from typing import Optional
 
-from constants import __IDLE__, __RUNNING__, __STOPPED__, SNOWFLAKE, SNOWFLAKE_PIDS
+from constants import __DOCKER__, __IDLE__, __RUNNING__, __STOPPED__, COMPOSE_DIR, SNOWFLAKE, SNOWFLAKE_PIDS, START_DOCKER_COMMAND, STOP_DOCKER_COMMAND
 from utils.pipeline_state import set_all_stages, set_stage_state
 from runtimes.snowflake.snowflake_client import SnowflakeClient
 from runtimes.snowflake.snowflake_config import SnowflakeConfig
 from utils.logging_utils import log
-from state import set_runtime_state
+from state import get_runtime_state, set_runtime_state
 
 # module-level storage
 _processes: dict[str, subprocess.Popen] = {}
@@ -39,7 +39,13 @@ def _build_env(config: SnowflakeConfig) -> dict:
         "SNOWFLAKE_BRONZE_TABLE": config.bronze_table,
         "SNOWFLAKE_SILVER_TABLE": config.silver_table,
         "SNOWFLAKE_GOLD_TABLE": config.gold_table,
-        "SNOWFLAKE_BATCH_CSV_PATH": config.batch_csv_local_path
+        "SNOWFLAKE_BATCH_CSV_PATH": config.batch_csv_local_path,
+        "SNOWFLAKE_KAFKA_BOOTSTRAP_SERVERS": os.getenv(
+            "SNOWFLAKE_KAFKA_BOOTSTRAP_SERVERS",
+            os.getenv("HADOOP_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        ),
+
+
     })
     return env
 
@@ -70,7 +76,8 @@ def on_selected():
     log("[HDMAS SNOWFLAKE] Press 'Start Pipeline' to connect.")
     set_runtime_state(SNOWFLAKE, __STOPPED__)
     
-def start_pipeline():
+def start_pipeline():    
+    # connect to snowflake
     log("[HDMAS SNOWFLAKE] Attempting to connect to Snowflake...")
     if get_status() != __RUNNING__:
         log("[HDMAS SNOWFLAKE] Connection failed.")
@@ -100,8 +107,11 @@ def start_pipeline():
     
 def stop_pipeline():
     log("[HDMAS SNOWFLAKE] Stopping pipeline...")
-    for stage in ("Gold", "Silver", "Batch"):
+    
+    for stage in ("Gold", "Silver", "Batch", "Kafka"):
         stop_stage(stage)
+        
+    # stop Snowflake
     set_runtime_state(SNOWFLAKE, __STOPPED__)
     log("[HDMAS SNOWFLAKE] Pipeline stopped.")
     
@@ -110,6 +120,25 @@ def start_stage(stage: str):
     if client is None or config is None:
         log("[HDMAS SNOWFLAKE] Cannot start stage - Snowflake is not properly configured.")
         return
+    
+    if stage == "Kafka":
+        if get_runtime_state(__DOCKER__) != __RUNNING__:
+            log("[HDMAS SNOWFLAKE] Starting Docker services for Kafka broker...")
+            result = subprocess.run(
+                START_DOCKER_COMMAND,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=str(COMPOSE_DIR),
+            )
+            if result.returncode != 0:
+                log(f"[HDMAS SNOWFLAKE] Docker startup failed: {result.stderr.strip()}")
+                return
+            set_runtime_state(__DOCKER__, __RUNNING__)
+            log("[HDMAS SNOWFLAKE] Docker ready.")
+        else:
+            log("[HDMAS SNOWFLAKE] Docker already running — skipping startup.")
+
     
     script = config.script_for(stage)
     if not script:
@@ -149,6 +178,7 @@ def start_stage(stage: str):
     except Exception as e:
         log(f"[HDMAS SNOWFLAKE] Failed to start stage '{stage}' - [ERR]: {e}")
         set_stage_state(stage, __STOPPED__)
+    
         
 def stop_stage(stage: str):
     process = _processes.get(stage)
@@ -177,5 +207,4 @@ def stop_stage(stage: str):
     pids.pop(stage, None)
     st.session_state[SNOWFLAKE_PIDS] = pids
     set_stage_state(stage, __STOPPED__)
-    
     

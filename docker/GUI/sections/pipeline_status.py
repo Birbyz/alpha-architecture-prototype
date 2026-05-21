@@ -71,9 +71,11 @@ def can_start_stage(stage: str) -> tuple[bool, str]:
     elif runtime == SNOWFLAKE:
         if get_runtime_state(SNOWFLAKE) != __RUNNING__:
             return False, "SNOWFLAKE is not connected. Press 'Start Pipeline' first." 
+        
         if stage in _SNOWFLAKE_NA_STAGES:
-            return False, f"{stage} stage is not supported on Snowflake runtime."     
-        if stage in ("Batch", "Silver", "Gold"):
+            return False, f"{stage} stage is not supported on Snowflake runtime."    
+         
+        if stage in ("Kafka", "Batch", "Silver", "Gold"):
             return True, ""
         return False, "Unsupported stage for Snowflake runtime."
 
@@ -158,7 +160,7 @@ def render_pipeline_status():
     refresh_stage_states()  # always refresh statuses before painting the table
     runtime = st.session_state.get("selected_runtime", LOCAL)
 
-    # --- Batch completion notifications ---
+    # Batch completion notifications
     batch_exhausted = st.session_state.get("batch_exhausted")
     if batch_exhausted == "success":
         st.success(

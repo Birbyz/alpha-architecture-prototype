@@ -2,7 +2,6 @@ import pandas as pd
 import streamlit as st
 
 from datetime import datetime
-from runtimes.ml import ml_predictor
 from runtimes.snowflake.snowflake_client import SnowflakeClient
 from runtimes.snowflake.snowflake_config import SnowflakeConfig
 from utils.logging_utils import log
@@ -16,17 +15,24 @@ from utils.data_builders import (
 )
 
 
-
 def is_pipeline_running():
     stage_states = st.session_state.get("stage_states", {})
     return any(state == __RUNNING__ for state in stage_states.values())
 
+
+# --------------------------------------------------
+# Logs tab
+# --------------------------------------------------
 
 def render_logs_tab():
     st.subheader("Logs")
     logs_text = "\n".join(st.session_state.get("log_lines", [])[-300:])
     st.text_area("Console", logs_text, height=450)
 
+
+# --------------------------------------------------
+# Gold Latest Rows tab
+# --------------------------------------------------
 
 def render_gold_tab():
     st.subheader("Gold Latest Rows")
@@ -37,7 +43,6 @@ def render_gold_tab():
     if runtime == HADOOP:
         st.caption("HADOOP runtime - data is stored on HDFS, not locally.")
 
-        # HDFS layer stats
         col_refresh, _ = st.columns([1, 3])
         with col_refresh:
             refresh_stats = st.button("Refresh HDFS stats", use_container_width=True)
@@ -56,7 +61,6 @@ def render_gold_tab():
 
         st.divider()
 
-        # GOLD sample data
         st.markdown("#### Sample Gold Rows")
         st.caption(
             "Reads the latest rows from the Gold Delta table on HDFS via a Spark client job (~30s)."
@@ -76,49 +80,47 @@ def render_gold_tab():
         if gold_sample is not None:
             st.dataframe(gold_sample, use_container_width=True, hide_index=True)
         return
-    
+
     # SNOWFLAKE
     if runtime == SNOWFLAKE:
         config = SnowflakeConfig.from_env()
         st.caption(
-            f"SNOWFLAKE runtime - data is stored in **{config.database}.{config.schema}**."
+            f"SNOWFLAKE runtime - data is stored in **{config.database}.{config.schema}**. "
             f"Data is also accessible here - [Snowsight ↗](https://{config.account}.snowflakecomputing.com)."
         )
-        
-        # row count summary
+
         col_counts, col_fetch = st.columns([2, 1])
         with col_counts:
             if st.button("Refresh Table Row Counts", use_container_width=True):
                 with st.spinner("Querying Snowflake..."):
                     _show_snowflake_table_counts(config)
-                    
+
         sf_counts = st.session_state.get("sf_table_counts")
         if sf_counts is not None:
             st.dataframe(sf_counts, hide_index=True, use_container_width=True)
-            
+
         st.divider()
-        
+
         st.markdown("#### Latest Gold Rows")
         st.caption("Queries the Gold table directly via snowflake-connector-python.")
-        
+
         fetch_cols = st.columns([1, 2])
         with fetch_cols[0]:
             gold_n = st.selectbox("Rows", [10, 20, 50], index=0, key="sf_gold_n")
         with fetch_cols[1]:
             fetch_gold_clicked = st.button("Fetch Gold Data", use_container_width=True)
-            
+
         if fetch_gold_clicked:
             with st.spinner("Querying Snowflake for latest Gold rows..."):
                 df = build_snowflake_gold_df(gold_n)
                 st.session_state["sf_gold_df"] = df
-        
+
         df = st.session_state.get("sf_gold_df")
         if df is not None:
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Press **Fetch Gold Data** to query the latest rows from the Gold table in Snowflake.")
         return
-        
 
     # LOCAL
     gold_controls = st.columns([1, 3])
@@ -129,7 +131,8 @@ def render_gold_tab():
 
     gold_df = build_gold_latest_df(row_count)
     st.dataframe(gold_df, width="stretch", hide_index=True)
-    
+
+
 def _show_snowflake_table_counts(config: SnowflakeConfig):
     try:
         client = SnowflakeClient(config)
@@ -137,20 +140,24 @@ def _show_snowflake_table_counts(config: SnowflakeConfig):
         for layer, table in [
             ("Bronze", config.bronze_table),
             ("Silver", config.silver_table),
-            ("Gold", config.gold_table)
+            ("Gold", config.gold_table),
         ]:
             count = client.get_table_row_count(table)
             rows.append({
                 "Layer": layer,
                 "Table": f"{config.database}.{config.schema}.{table}",
-                "Rows": count if count is not None else "-"
+                "Rows": count if count is not None else "-",
             })
         st.session_state["sf_table_counts"] = pd.DataFrame(rows)
     except Exception as e:
         log(f"[HDMAS SNOWFLAKE] Error fetching table counts - [ERR]: {e}")
         st.session_state["sf_table_counts"] = pd.DataFrame([{"error": str(e)}])
 
-# METRICS TAB
+
+# --------------------------------------------------
+# Metrics tab
+# --------------------------------------------------
+
 def render_metrics_tab():
     st.subheader("Metrics")
 
@@ -184,7 +191,10 @@ def render_metrics_tab():
     st.line_chart(metrics_df.set_index("time")[["pipeline_lag_sec"]], height=250)
 
 
+# --------------------------------------------------
 # ML tab
+# --------------------------------------------------
+
 def _init_ml_state():
     if "ml_state" not in st.session_state:
         st.session_state["ml_state"] = __IDLE__
@@ -194,41 +204,98 @@ def _init_ml_state():
         st.session_state["ml_predict_result"] = None
     if "ml_error" not in st.session_state:
         st.session_state["ml_error"] = None
-   
-    
+
+
 def render_ml_tab():
+    try:
+        from runtimes.ml import ml_predictor
+    except ImportError as e:
+        st.error(
+            f"ML dependencies not installed: {e}. "
+            "Run `pip install scikit-learn joblib` to enable ML features."
+        )
+        return
+
     _init_ml_state()
+
     st.subheader("ML Predictions")
     st.caption(
         "Multi-horizon VWAP forecasting trained on the Gold layer. "
         "Predicts the next 5 / 15 / 30 minute VWAP and price direction using a Random Forest."
     )
 
-    # control rows
-    control_rows = st.columns([1, 1, 1, 2])
-    with control_rows[0]:
+    # ── Controls ──────────────────────────────────────────────────────────────
+    ctrl_cols = st.columns([1, 1, 1, 2])
+
+    with ctrl_cols[0]:
         source = st.selectbox(
-            "Data Source",
-            ["snowflake", "local"],
+            "Data source",
+            [SNOWFLAKE.lower(), "local"],
             index=0,
             key="ml_source",
-            help="Snowflake: queries the Gold table directy. Local reads Delta parquet files"
+            help="Snowflake: queries the Gold table. Local: reads Delta parquet files.",
         )
-        
-    with control_rows[1]:
+
+    with ctrl_cols[1]:
         train_clicked = st.button("Train Model", use_container_width=True, type="primary")
-        
-    with control_rows[2]:
+
+    with ctrl_cols[2]:
+        model_ready = (
+            ml_predictor.is_model_trained()
+            or st.session_state.get("ml_train_result") is not None
+        )
         predict_clicked = st.button(
             "Run Prediction",
             use_container_width=True,
-            disabled=not ml_predictor.is_model_trained()
+            disabled=not model_ready,
         )
-        
-    with control_rows[3]:
+
+    with ctrl_cols[3]:
         reset_clicked = st.button("Reset ML State", use_container_width=True)
-        
-    # ACTIONS
+
+    # ── Actions ───────────────────────────────────────────────────────────────
+    if reset_clicked:
+        ml_predictor.reset()
+        st.session_state["ml_state"] = __IDLE__
+        st.session_state["ml_train_result"] = None
+        st.session_state["ml_predict_result"] = None
+        st.session_state["ml_error"] = None
+        log("[HDMAS ML] State reset — model and metadata removed.")
+        st.rerun()
+
+    if train_clicked:
+        st.session_state["ml_state"] = __RUNNING__
+        st.session_state["ml_error"] = None
+        log(f"[HDMAS ML] Training started (source={source})...")
+
+        # Progress bar + status label rendered above the results area
+        progress_bar  = st.progress(0, text="Starting...")
+        status_text   = st.empty()
+
+        def on_progress(step: int, total: int, message: str) -> None:
+            pct = int((step / total) * 100)
+            progress_bar.progress(pct, text=message)
+            status_text.caption(f"Step {step}/{total} — {message}")
+            log(f"[HDMAS ML] {message}")
+
+        try:
+            meta = ml_predictor.train_model(source=source, on_progress=on_progress)
+            progress_bar.progress(100, text="Training complete.")
+            status_text.empty()
+            st.session_state["ml_train_result"] = meta
+            st.session_state["ml_state"] = __IDLE__
+            st.rerun()
+            log(
+                f"[HDMAS ML] Training complete — {meta['n_rows_engineered']} rows, "
+                f"version {meta['model_version']}."
+            )
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            st.session_state["ml_error"] = str(e)
+            st.session_state["ml_state"] = __IDLE__
+            log(f"[HDMAS ML] Training failed: {e}")
+
     if predict_clicked:
         st.session_state["ml_state"] = __RUNNING__
         st.session_state["ml_error"] = None
@@ -238,69 +305,26 @@ def render_ml_tab():
                 result = ml_predictor.predict()
                 st.session_state["ml_predict_result"] = result
                 st.session_state["ml_state"] = __IDLE__
+                p5 = result["predictions"]["5"]
                 log(
                     f"[HDMAS ML] Prediction complete — current VWAP ${result['current_vwap']:,.2f}, "
-                    f"5-min forecast ${result['predictions']['5']['predicted_vwap']:,.2f} "
-                    f"({result['predictions']['5']['direction']} {result['predictions']['5']['confidence']}%)."
+                    f"5-min forecast ${p5['predicted_vwap']:,.2f} "
+                    f"({p5['direction']} {p5['confidence']}%)."
                 )
             except Exception as e:
                 st.session_state["ml_error"] = str(e)
                 st.session_state["ml_state"] = __IDLE__
                 log(f"[HDMAS ML] Prediction failed: {e}")
-                
-    if train_clicked:
-        st.session_state["ml_state"] = __RUNNING__
-        st.session_state["ml_error"] = None
-        log(f"[HDMAS ML] Training started (source={source})...")
-        
-        progress_bar = st.progress(0, text="Starting...")
-        status_text = st.empty()
-        
-        def on_progress(step: int, total: int, message: str):
-            pct = int((step / total) * 100)
-            progress_bar.progress(pct, text=message)
-            status_text.caption(f"Step {step}/{total} — {message}")
-            log(f"[HDMAS ML] {message}")
-            
-        try:
-            meta = ml_predictor.train_model(source=source, on_progress=on_progress)
-            progress_bar.progress(100, text="Training complete!")
-            status_text.empty()
-            
-            st.session_state["ml_train_result"] = meta
-            st.session_state["ml_state"] = __IDLE__
-            log(
-                f"[HDMAS ML] Training complete — {meta['n_rows_engineered']} rows, "
-                f"version {meta['model_version']}."
-            )
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            
-            st.session_state["ml_error"] = str(e)
-            st.session_state["ml_state"] = __IDLE__
-            log(f"[HDMAS ML] Training failed: {e}")
 
-    
-    if reset_clicked:
-        ml_predictor.reset()
-        st.session_state["ml_state"] = __IDLE__
-        st.session_state["ml_train_result"] = None
-        st.session_state["ml_predict_result"] = None
-        st.session_state["ml_error"] = None
-        log("[HDMAS ML] State reset — model and metadata removed.")
-        st.rerun()
-        
-        
-    # error banner
+    # ── Error banner ──────────────────────────────────────────────────────────
     if st.session_state.get("ml_error"):
-        st.error(f"**ML Error** {st.session_state['ml_error']}")
+        st.error(f"**ML Error:** {st.session_state['ml_error']}")
+
     st.divider()
-    
-    # load persisted metadata
+
+    # ── Load persisted metadata (survives page refreshes) ─────────────────────
     meta = st.session_state.get("ml_train_result") or ml_predictor.load_meta()
-    
-    # CASE: no model created
+
     if meta is None:
         st.info(
             "No trained model found. Select a data source and press **Train Model** to get started. "
@@ -308,49 +332,85 @@ def render_ml_tab():
         )
         return
 
-    # model summary cards
+    # ── Model summary cards ───────────────────────────────────────────────────
     st.markdown("#### Model")
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Version", meta.get("model_version", "-"))
-    with m2:
-        st.metric("Trained at", meta.get("trained_at", "-"))
-    with m3:
-        st.metric("Training rows", f"{meta.get('n_train', '-'):,}" if isinstance(meta.get("n_train"), int) else "-")
-    with m4:
+
+    sparse_warning = meta.get("sparse_warning")
+    if sparse_warning:
+        st.warning(f"⚠️ {sparse_warning}")
+
+    # Row 1 — source + tier (short values, always readable)
+    r1_col1, r1_col2 = st.columns(2)
+    with r1_col1:
         st.metric("Source", meta.get("source", "-").capitalize())
+    with r1_col2:
+        tier = meta.get("tier", "full")
+        tier_colors = {"full": "🟢", "medium": "🟡", "sparse": "🟠"}
+        st.metric("Data tier", f"{tier_colors.get(tier, '')} {tier.capitalize()}")
 
-    
-    # metrics
-        st.markdown("#### Evaluation metrics (test set)")
+    # Row 2 — version, timestamp, row count (longer values get full width)
+    r2_col1, r2_col2, r2_col3 = st.columns(3)
+    with r2_col1:
+        st.metric("Version", meta.get("model_version", "-"))
+    with r2_col2:
+        st.metric("Trained at", meta.get("trained_at", "-"))
+    with r2_col3:
+        n_train = meta.get("n_train")
+        st.metric("Training rows", f"{n_train:,}" if isinstance(n_train, int) else "-")
+
+    # ── Per-horizon evaluation metrics ────────────────────────────────────────
+    st.markdown("#### Evaluation metrics (test set)")
     raw_metrics = meta.get("metrics", {})
-    horizons_labels = {"5": "5 min", "15": "15 min", "30": "30 min"}
-    h_cols = st.columns(len(horizons_labels))
- 
-    for i, (h_key, h_label) in enumerate(horizons_labels.items()):
-        hm = raw_metrics.get(h_key, {})
-        with h_cols[i]:
-            st.markdown(f"**{h_label}**")
-            st.metric("MAE", f"${hm.get('mae', '-'):,.2f}" if isinstance(hm.get("mae"), (int, float)) else "-")
-            st.metric("RMSE", f"${hm.get('rmse', '-'):,.2f}" if isinstance(hm.get("rmse"), (int, float)) else "-")
-            r2_val = hm.get("r2")
-            st.metric("R²", f"{r2_val:.4f}" if isinstance(r2_val, (int, float)) else "-")
+    meta_horizons = [str(h) for h in meta.get("horizons", [5, 15, 30])]
+    h_cols = st.columns(len(meta_horizons))
 
-    
-    # test-set forecast chart
+    for col, h_key in zip(h_cols, meta_horizons):
+        hm = raw_metrics.get(h_key, {})
+        with col:
+            st.markdown(f"**{h_key} min**")
+            mae  = hm.get("mae")
+            rmse = hm.get("rmse")
+            r2   = hm.get("r2")
+            st.metric("MAE",  f"${mae:,.2f}"  if isinstance(mae,  (int, float)) else "-")
+            st.metric("RMSE", f"${rmse:,.2f}" if isinstance(rmse, (int, float)) else "-")
+            st.metric("R²",   f"{r2:.4f}"     if isinstance(r2,   (int, float)) else "-")
+
+    # ── Test-set forecast chart ───────────────────────────────────────────────
     chart_data = meta.get("chart", {})
     if chart_data.get("actual") and chart_data.get("pred_5min"):
-        st.markdown("#### Actual vs predicted VWAP (test set, 5-min horizon)")
-        chart_df = pd.DataFrame(
-            {
-                "Actual VWAP": chart_data["actual"],
-                "Predicted VWAP (5 min)": chart_data["pred_5min"],
-            },
-            index=chart_data.get("timestamps", range(len(chart_data["actual"]))),
-        )
-        st.line_chart(chart_df, height=280)
+        actual    = chart_data["actual"]
+        pred      = chart_data["pred_5min"]
+        timestamps = chart_data.get("timestamps", list(range(len(actual))))
+        residuals = [round(a - p, 2) for a, p in zip(actual, pred)]
 
-    # feature importance
+        # Zoom to last 30 points so the small gap between lines is visible
+        zoom = 30
+        idx_start = max(0, len(actual) - zoom)
+        z_ts   = timestamps[idx_start:]
+        z_act  = actual[idx_start:]
+        z_pred = pred[idx_start:]
+        z_res  = residuals[idx_start:]
+
+        st.markdown("#### Actual vs predicted VWAP — last 30 test windows (5-min horizon)")
+        st.caption(
+            "Zoomed to the last 30 test windows so the gap between the two series is visible. "
+            "Full test set residuals are shown below."
+        )
+        zoom_df = pd.DataFrame(
+            {"Actual VWAP": z_act, "Predicted VWAP (5 min)": z_pred},
+            index=z_ts,
+        )
+        st.line_chart(zoom_df, height=240)
+
+        st.markdown("#### Prediction error — full test set (actual − predicted, 5-min)")
+        st.caption("Bars above zero = model under-predicted. Below zero = over-predicted.")
+        resid_df = pd.DataFrame(
+            {"Error (USD)": residuals},
+            index=timestamps,
+        )
+        st.bar_chart(resid_df, height=200)
+
+    # ── Feature importance ────────────────────────────────────────────────────
     fi = meta.get("feature_importance", {})
     if fi:
         st.markdown("#### Feature importance (5-min model)")
@@ -362,16 +422,16 @@ def render_ml_tab():
         )
         st.bar_chart(fi_df.set_index("Feature")["Importance"], height=260)
 
-    # latest predictions
+    # ── Latest prediction ─────────────────────────────────────────────────────
     pred_result = st.session_state.get("ml_predict_result")
     if pred_result is None:
         st.divider()
         st.info("Press **Run Prediction** to forecast the next 5 / 15 / 30 minutes.")
         return
- 
+
     st.divider()
     st.markdown("#### Latest prediction")
- 
+
     p_cols = st.columns(4)
     with p_cols[0]:
         st.metric("Predicted at", pred_result.get("timestamp", "-"))
@@ -381,12 +441,11 @@ def render_ml_tab():
         st.metric("Model", pred_result.get("model_version", "-"))
     with p_cols[3]:
         st.metric("Source", pred_result.get("source", "-").capitalize())
- 
+
     st.markdown("#### Per-horizon forecasts")
     result_horizons = [str(h) for h in pred_result.get("horizons", [5, 15, 30])]
     pred_cols = st.columns(len(result_horizons))
 
- 
     for col, h_key in zip(pred_cols, result_horizons):
         hp         = pred_result.get("predictions", {}).get(h_key, {})
         direction  = hp.get("direction", "?")
@@ -395,11 +454,11 @@ def render_ml_tab():
         std        = hp.get("std", 0.0)
         lower      = hp.get("lower", 0.0)
         upper      = hp.get("upper", 0.0)
- 
+
         arrow     = "↑" if direction == "UP" else "↓"
         delta_usd = predicted - pred_result["current_vwap"]
         delta_str = f"{'+' if delta_usd >= 0 else ''}{delta_usd:,.2f}"
- 
+
         with col:
             st.markdown(f"**{h_key} min**")
             st.metric(
@@ -414,9 +473,11 @@ def render_ml_tab():
             st.caption(f"±${std:,.2f} std  |  range ${lower:,.2f} – ${upper:,.2f}")
 
 
+# --------------------------------------------------
+# Tab router
+# --------------------------------------------------
 
 def render_tabs():
-    # ---------- tabs ----------
     tabs = st.tabs(["Logs", "Gold Latest Rows", "Metrics", "ML"])
 
     with tabs[0]:
